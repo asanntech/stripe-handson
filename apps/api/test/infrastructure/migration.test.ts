@@ -1,11 +1,16 @@
 import pg from 'pg'
-import { afterAll, describe, expect, it } from 'vitest'
+import { afterAll, beforeEach, describe, expect, it } from 'vitest'
 import { createDb } from '../../src/infrastructure/db/client.js'
 import { users } from '../../src/infrastructure/db/schema.js'
+import { truncateAllTables } from '../helpers/database.js'
 
 describe('マイグレーション', () => {
   const pool = new pg.Pool({ connectionString: process.env.TEST_DATABASE_URL })
   const db = createDb(pool)
+
+  beforeEach(async () => {
+    await truncateAllTables(pool)
+  })
 
   afterAll(async () => {
     await pool.end()
@@ -16,7 +21,7 @@ describe('マイグレーション', () => {
 
     const rows = await db.select().from(users)
 
-    expect(rows).toContainEqual(inserted)
+    expect(rows).toEqual([inserted])
     expect(inserted?.name).toBe('alice')
   })
 })
