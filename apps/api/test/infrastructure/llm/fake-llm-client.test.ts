@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { FakeLlmClient } from '@/infrastructure/llm/fake-llm-client'
 import type { LlmStreamEvent } from '@/usecases/ports/llm-client'
 
@@ -9,6 +9,10 @@ const collect = async (stream: AsyncIterable<LlmStreamEvent>): Promise<LlmStream
 }
 
 describe('FakeLlmClient', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
   it('出力トークン数を指定したとき その数のトークンをチャンクでストリームし usage を返す', async () => {
     const llm = new FakeLlmClient(() => ({ inputTokens: 7, outputTokens: 3 }))
 
@@ -57,5 +61,29 @@ describe('FakeLlmClient', () => {
       stopReason: 'end_turn',
       usage: { inputTokens: 4, outputTokens: 3 },
     })
+  })
+
+  it('チャンク間遅延を指定したとき 各チャンクがその間隔で届く', async () => {
+    vi.useFakeTimers()
+    const llm = new FakeLlmClient(() => ({ inputTokens: 1, outputTokens: 2, chunkDelayMs: 100 }))
+    const stream = llm
+      .stream({ model: 'fake-model', prompt: 'hi', maxTokens: 10 })
+      [Symbol.asyncIterator]()
+    const received: string[] = []
+    const next = () => stream.next().then((r) => received.push(r.done ? 'end' : r.value.type))
+
+    const first = next()
+    await vi.advanceTimersByTimeAsync(99)
+    expect(received).toEqual([])
+    await vi.advanceTimersByTimeAsync(1)
+    await first
+    expect(received).toEqual(['delta'])
+
+    const second = next()
+    await vi.advanceTimersByTimeAsync(99)
+    expect(received).toEqual(['delta'])
+    await vi.advanceTimersByTimeAsync(1)
+    await second
+    expect(received).toEqual(['delta', 'delta'])
   })
 })

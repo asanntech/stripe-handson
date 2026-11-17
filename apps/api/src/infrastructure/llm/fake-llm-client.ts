@@ -5,7 +5,12 @@ export type FakeLlmScenario = {
   inputTokens: number
   // 生成したい出力トークン数（maxTokens を超える分は打ち切られる）
   outputTokens: number
+  // 各チャンクを流す前に待つ時間（ストリーミングの遅さを再現する）。省略時は待たない
+  chunkDelayMs?: number
 }
+
+// グローバルの setTimeout を使う（テストで vi.useFakeTimers() により時間を進められるようにするため）
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
 
 // 実 LLM の代わりに、指定どおりのトークン数を 1 トークン 1 チャンクでストリームする
 export class FakeLlmClient implements LlmClient {
@@ -18,6 +23,7 @@ export class FakeLlmClient implements LlmClient {
     const stopReason = scenario.outputTokens > request.maxTokens ? 'max_tokens' : 'end_turn'
 
     for (let i = 0; i < outputTokens; i++) {
+      if (scenario.chunkDelayMs) await sleep(scenario.chunkDelayMs)
       yield { type: 'delta', text: `token${i + 1} ` }
     }
     yield { type: 'done', stopReason, usage: { inputTokens: scenario.inputTokens, outputTokens } }
