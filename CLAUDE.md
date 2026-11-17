@@ -14,3 +14,25 @@ pnpm typecheck    # tsc --noEmit
 
 - 接続先は `.env`（`.env.example` をコピー）。テストは `TEST_DATABASE_URL`（未設定時は `localhost:5436/app_test`）。
 - `docs/` などの Markdown は Biome の対象外。
+
+## アーキテクチャ（apps/api/src）
+
+クリーンアーキテクチャ。方針の詳細は `docs/plan.md` の「アーキテクチャ方針」を参照。
+
+| ディレクトリ | 役割 |
+|---|---|
+| `domain/` | 業務ルール（純粋な計算）。他の層・ライブラリに依存しない |
+| `usecases/` | ユースケース。Tx 境界を持つ。外部依存は `usecases/ports/` のインターフェース経由 |
+| `infrastructure/` | ポートの実装（Drizzle・Stripe・Fake LLM など） |
+| `interfaces/` | 入口。oRPC の procedure（`interfaces/orpc/`）、Hono の素のルート |
+| `main.ts` | コンポジションルート（依存の組み立てのみ） |
+
+- 依存は外側 → 内側のみ（interfaces / infrastructure → usecases → domain）
+- ライブラリのセットアップは、それを使う層の中の `setup.ts` に置く（トップレベルの `libs/` は作らない）
+- API の仕様（input / output）は `packages/contract` に定義し、サーバーは `implement(contract)` で実装する
+- DB アクセスはアプリもテストも `createDb()`（Drizzle）に統一する。プールが必要なときは `db.$client`
+
+## テストの規約
+
+- DB を使うテストは `beforeEach` で `truncateAllTables(db)` を明示的に呼ぶ
+- 競合テストは `createBarrier()` と `waitUntilWaitingForLock()` で実行順序を固定する（確率的に Green になるテストは書かない）
