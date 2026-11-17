@@ -7,6 +7,8 @@ export type FakeLlmScenario = {
   outputTokens: number
   // 各チャンクを流す前に待つ時間（ストリーミングの遅さを再現する）。省略時は待たない
   chunkDelayMs?: number
+  // 指定した数のチャンクを流した直後に切断する（出力数と同じなら done の直前）。省略時は切断しない
+  disconnectAfterChunks?: number
 }
 
 // グローバルの setTimeout を使う（テストで vi.useFakeTimers() により時間を進められるようにするため）
@@ -22,9 +24,19 @@ export class FakeLlmClient implements LlmClient {
     const outputTokens = Math.min(scenario.outputTokens, request.maxTokens)
     const stopReason = scenario.outputTokens > request.maxTokens ? 'max_tokens' : 'end_turn'
 
-    for (let i = 0; i < outputTokens; i++) {
+    // 切断位置が出力数以内なら、そこまでのチャンクだけ流して done の代わりに error で終わる。
+    // 切断位置 === 出力数は「本文は全部届いたが usage が届かない」状況を再現する
+    const disconnectAt = scenario.disconnectAfterChunks
+    const disconnects = disconnectAt !== undefined && disconnectAt <= outputTokens
+    const chunkCount = disconnects ? disconnectAt : outputTokens
+
+    for (let i = 0; i < chunkCount; i++) {
       if (scenario.chunkDelayMs) await sleep(scenario.chunkDelayMs)
       yield { type: 'delta', text: `token${i + 1} ` }
+    }
+    if (disconnects) {
+      yield { type: 'error', error: { type: 'disconnected' } }
+      return
     }
     yield { type: 'done', stopReason, usage: { inputTokens: scenario.inputTokens, outputTokens } }
   }

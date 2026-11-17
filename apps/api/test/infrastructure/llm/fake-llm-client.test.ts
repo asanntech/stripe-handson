@@ -86,4 +86,48 @@ describe('FakeLlmClient', () => {
     await second
     expect(received).toEqual(['delta', 'delta'])
   })
+
+  it('切断位置を指定したとき そのチャンクの後でエラーイベントで終わり usage は返らない', async () => {
+    const llm = new FakeLlmClient(() => ({
+      inputTokens: 1,
+      outputTokens: 5,
+      disconnectAfterChunks: 2,
+    }))
+
+    const events = await collect(llm.stream({ model: 'fake-model', prompt: 'hi', maxTokens: 10 }))
+
+    expect(events).toEqual([
+      { type: 'delta', text: 'token1 ' },
+      { type: 'delta', text: 'token2 ' },
+      { type: 'error', error: { type: 'disconnected' } },
+    ])
+  })
+
+  it('切断位置に 0 を指定したとき チャンクを流さずエラーイベントだけで終わる', async () => {
+    const llm = new FakeLlmClient(() => ({
+      inputTokens: 1,
+      outputTokens: 5,
+      disconnectAfterChunks: 0,
+    }))
+
+    const events = await collect(llm.stream({ model: 'fake-model', prompt: 'hi', maxTokens: 10 }))
+
+    expect(events).toEqual([{ type: 'error', error: { type: 'disconnected' } }])
+  })
+
+  it('切断位置に出力数と同じ値を指定したとき 全チャンクを流したあと done の代わりにエラーイベントで終わる', async () => {
+    const llm = new FakeLlmClient(() => ({
+      inputTokens: 1,
+      outputTokens: 2,
+      disconnectAfterChunks: 2,
+    }))
+
+    const events = await collect(llm.stream({ model: 'fake-model', prompt: 'hi', maxTokens: 10 }))
+
+    expect(events).toEqual([
+      { type: 'delta', text: 'token1 ' },
+      { type: 'delta', text: 'token2 ' },
+      { type: 'error', error: { type: 'disconnected' } },
+    ])
+  })
 })
