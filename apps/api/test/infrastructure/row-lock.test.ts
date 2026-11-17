@@ -20,7 +20,8 @@ describe('複数接続での行ロック', () => {
 
   it('2 接続で同じ行を FOR UPDATE したとき 後続の Tx は先行 Tx のコミットまで待たされる', async () => {
     const [user] = await db.insert(users).values({ name: 'alice' }).returning()
-    const userId = user?.id ?? ''
+    if (!user) throw new Error('準備: users の INSERT が行を返しませんでした')
+    const userId = user.id
     const aLocked = createBarrier()
     const bPid = Promise.withResolvers<number>()
     const events: string[] = []
@@ -36,7 +37,14 @@ describe('複数接続での行ロック', () => {
       await aLocked.wait()
       await db.transaction(async (tx) => {
         const { rows } = await tx.execute<{ pid: number }>(sql`SELECT pg_backend_pid() AS pid`)
-        bPid.resolve(rows[0]?.pid ?? 0)
+        const pid = rows[0]?.pid
+        if (pid === undefined) {
+          // A が pid を待ち続けて固まらないよう、A 側にも失敗を伝える
+          const error = new Error('準備: Tx B の pg_backend_pid() が取得できませんでした')
+          bPid.reject(error)
+          throw error
+        }
+        bPid.resolve(pid)
         await tx.select().from(users).where(eq(users.id, userId)).for('update')
         events.push('B: locked')
       })

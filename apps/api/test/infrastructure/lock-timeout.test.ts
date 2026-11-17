@@ -20,7 +20,8 @@ describe('ロックタイムアウト', () => {
 
   it('2 接続で同じ行をロックし短い lock_timeout を設定したとき 後続の Tx がロックタイムアウトエラーになる', async () => {
     const [user] = await db.insert(users).values({ name: 'alice' }).returning()
-    const userId = user?.id ?? ''
+    if (!user) throw new Error('準備: users の INSERT が行を返しませんでした')
+    const userId = user.id
     const aLocked = createBarrier()
     const bFinished = createBarrier()
 
