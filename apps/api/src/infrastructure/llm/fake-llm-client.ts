@@ -7,7 +7,8 @@ export type FakeLlmScenario = {
   outputTokens: number
   // 各チャンクを流す前に待つ時間（ストリーミングの遅さを再現する）。省略時は待たない
   chunkDelayMs?: number
-  // 指定した数のチャンクを流した直後に切断する（出力数と同じなら done の直前）。省略時は切断しない
+  // 指定した数のチャンクを流した直後に切断する（出力数と同じなら done の直前）。省略時は切断しない。
+  // maxTokens で切った後の出力数を超える値は設定ミスとして例外にする
   disconnectAfterChunks?: number
 }
 
@@ -24,10 +25,16 @@ export class FakeLlmClient implements LlmClient {
     const outputTokens = Math.min(scenario.outputTokens, request.maxTokens)
     const stopReason = scenario.outputTokens > request.maxTokens ? 'max_tokens' : 'end_turn'
 
-    // 切断位置が出力数以内なら、そこまでのチャンクだけ流して done の代わりに error で終わる。
+    // 切断位置を指定したら、そこまでのチャンクだけ流して done の代わりに error で終わる。
     // 切断位置 === 出力数は「本文は全部届いたが usage が届かない」状況を再現する
     const disconnectAt = scenario.disconnectAfterChunks
-    const disconnects = disconnectAt !== undefined && disconnectAt <= outputTokens
+    if (disconnectAt !== undefined && disconnectAt > outputTokens) {
+      // 黙って無視すると、切断のテストが「切断されずに正常終了した」まま別の理由で通りうるため、設定ミスとして知らせる
+      throw new Error(
+        `FakeLlmScenario の disconnectAfterChunks（${disconnectAt}）が、maxTokens で切った後の出力数（${outputTokens}）を超えています`,
+      )
+    }
+    const disconnects = disconnectAt !== undefined
     const chunkCount = disconnects ? disconnectAt : outputTokens
 
     for (let i = 0; i < chunkCount; i++) {

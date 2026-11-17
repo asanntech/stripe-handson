@@ -130,4 +130,16 @@ describe('FakeLlmClient', () => {
       { type: 'error', error: { type: 'disconnected' } },
     ])
   })
+
+  it('切断位置が maxTokens で切った後の出力数を超えるとき 設定ミスとして例外を投げる', async () => {
+    const llm = new FakeLlmClient(() => ({
+      inputTokens: 1,
+      outputTokens: 10,
+      disconnectAfterChunks: 5,
+    }))
+
+    await expect(
+      collect(llm.stream({ model: 'fake-model', prompt: 'hi', maxTokens: 3 })),
+    ).rejects.toThrow('disconnectAfterChunks')
+  })
 })
