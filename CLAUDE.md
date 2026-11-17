@@ -31,6 +31,8 @@ pnpm typecheck    # tsc --noEmit
 - ライブラリのセットアップは、それを使う層の中の `setup.ts` に置く（トップレベルの `libs/` は作らない）
 - API の仕様（input / output）は `packages/contract` に定義し、サーバーは `implement(contract)` で実装する
 - DB アクセスはアプリもテストも `createDb()`（Drizzle）に統一する。プールが必要なときは `db.$client`
+- import は拡張子なしで書く（`moduleResolution: bundler`）。`apps/api/src` へはエイリアス `@/`（例: `@/usecases/ports/llm-client`）、同じディレクトリ内は `./`。親ディレクトリへの `../` はテストのヘルパー（`helpers/`）以外禁止（Biome の `noRestrictedImports` で強制）
+- `packages/*` ではエイリアスを使わない（api がソースのまま読み込むため、api 側の設定で解決されて壊れる）
 
 ## テストの規約
 

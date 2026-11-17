@@ -1,6 +1,6 @@
 import { setTimeout } from 'node:timers/promises'
 import { sql } from 'drizzle-orm'
-import type { Db } from '../../src/infrastructure/db/client.js'
+import type { Db } from '@/infrastructure/db/client'
 
 type Options = { timeoutMs?: number; intervalMs?: number }
 

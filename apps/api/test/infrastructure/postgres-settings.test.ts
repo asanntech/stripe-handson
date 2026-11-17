@@ -1,6 +1,6 @@
 import { sql } from 'drizzle-orm'
 import { afterAll, describe, expect, it } from 'vitest'
-import { createDb } from '../../src/infrastructure/db/client.js'
+import { createDb } from '@/infrastructure/db/client'
 
 describe('テスト用 PostgreSQL の設定', () => {
   const db = createDb({ connectionString: process.env.TEST_DATABASE_URL })

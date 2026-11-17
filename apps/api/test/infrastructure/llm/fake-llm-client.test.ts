@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { FakeLlmClient } from '../../../src/infrastructure/llm/fake-llm-client.js'
-import type { LlmStreamEvent } from '../../../src/usecases/ports/llm-client.js'
+import { FakeLlmClient } from '@/infrastructure/llm/fake-llm-client'
+import type { LlmStreamEvent } from '@/usecases/ports/llm-client'
 
 const collect = async (stream: AsyncIterable<LlmStreamEvent>): Promise<LlmStreamEvent[]> => {
   const events: LlmStreamEvent[] = []

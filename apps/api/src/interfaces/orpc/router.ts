@@ -1,4 +1,4 @@
-import { orpc } from './setup.js'
+import { orpc } from './setup'
 
 export const router = orpc.router({
   health: {

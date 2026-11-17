@@ -1,7 +1,7 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest'
-import { createDb } from '../../src/infrastructure/db/client.js'
-import { users } from '../../src/infrastructure/db/schema.js'
-import { truncateAllTables } from '../helpers/database.js'
+import { createDb } from '@/infrastructure/db/client'
+import { users } from '@/infrastructure/db/schema'
+import { truncateAllTables } from '../helpers/database'
 
 describe('テスト間の TRUNCATE 分離', () => {
   const db = createDb({ connectionString: process.env.TEST_DATABASE_URL })

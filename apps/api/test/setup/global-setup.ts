@@ -1,6 +1,6 @@
 import { fileURLToPath } from 'node:url'
 import { migrate } from 'drizzle-orm/node-postgres/migrator'
-import { createDb } from '../../src/infrastructure/db/client.js'
+import { createDb } from '@/infrastructure/db/client'
 
 // テスト実行前に 1 回だけ、テスト用 DB を最新スキーマへマイグレーションする
 export default async function setup(): Promise<void> {

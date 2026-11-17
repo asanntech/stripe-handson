@@ -2,9 +2,9 @@ import { createORPCClient } from '@orpc/client'
 import { RPCLink } from '@orpc/client/fetch'
 import type { AppClient } from '@stripe-handson/contract'
 import { afterAll, describe, expect, it } from 'vitest'
-import { createDb } from '../../src/infrastructure/db/client.js'
-import { createDatabaseHealthCheck } from '../../src/infrastructure/db/health-check.js'
-import { createApp } from '../../src/interfaces/app.js'
+import { createDb } from '@/infrastructure/db/client'
+import { createDatabaseHealthCheck } from '@/infrastructure/db/health-check'
+import { createApp } from '@/interfaces/app'
 
 describe('ヘルスチェック API', () => {
   const db = createDb({ connectionString: process.env.TEST_DATABASE_URL })

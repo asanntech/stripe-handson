@@ -1,7 +1,7 @@
 import { serve } from '@hono/node-server'
-import { createDb } from './infrastructure/db/client.js'
-import { createDatabaseHealthCheck } from './infrastructure/db/health-check.js'
-import { createApp } from './interfaces/app.js'
+import { createDb } from './infrastructure/db/client'
+import { createDatabaseHealthCheck } from './infrastructure/db/health-check'
+import { createApp } from './interfaces/app'
 
 // コンポジションルート: 依存を組み立ててサーバーを起動するだけ（ロジックは置かない）
 const db = createDb({ connectionString: process.env.DATABASE_URL })

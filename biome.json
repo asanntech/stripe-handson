@@ -1,16 +1,49 @@
 {
   "$schema": "https://biomejs.dev/schemas/2.6.7/schema.json",
-  "vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
-  "files": { "includes": ["**", "!**/drizzle/meta", "!**/*.md"] },
-  "formatter": { "enabled": true, "indentStyle": "space", "indentWidth": 2, "lineWidth": 100 },
+  "vcs": {
+    "enabled": true,
+    "clientKind": "git",
+    "useIgnoreFile": true
+  },
+  "files": {
+    "includes": ["**", "!**/drizzle/meta", "!**/*.md"]
+  },
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineWidth": 100
+  },
   "linter": {
     "enabled": true,
     "rules": {
       "preset": "recommended",
       "nursery": {
         "noFloatingPromises": "error"
+      },
+      "style": {
+        "noRestrictedImports": {
+          "level": "error",
+          "options": {
+            "patterns": [
+              {
+                "group": ["./**/*.js", "../**/*.js", "./**/*.ts", "../**/*.ts"],
+                "message": "相対 import に拡張子を付けない（moduleResolution: bundler）。例: './llm-client'"
+              },
+              {
+                "group": ["../**", "!**/helpers/**"],
+                "message": "親ディレクトリへの相対 import は使わず、エイリアス '@/' を使う（例: '@/usecases/ports/llm-client'）。同じディレクトリ内は './' でよい"
+              }
+            ]
+          }
+        }
       }
     }
   },
-  "javascript": { "formatter": { "quoteStyle": "single", "semicolons": "asNeeded" } }
+  "javascript": {
+    "formatter": {
+      "quoteStyle": "single",
+      "semicolons": "asNeeded"
+    }
+  }
 }

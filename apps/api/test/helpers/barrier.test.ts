@@ -1,6 +1,6 @@
 import { setTimeout } from 'node:timers/promises'
 import { describe, expect, it } from 'vitest'
-import { createBarrier } from './barrier.js'
+import { createBarrier } from './barrier'
 
 describe('バリア', () => {
   it('A→B の順に固定したとき 処理 A の完了後にのみ処理 B が進む', async () => {

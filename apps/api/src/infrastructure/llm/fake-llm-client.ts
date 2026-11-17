@@ -1,4 +1,4 @@
-import type { LlmClient, LlmRequest, LlmStreamEvent } from '../../usecases/ports/llm-client.js'
+import type { LlmClient, LlmRequest, LlmStreamEvent } from '@/usecases/ports/llm-client'
 
 // リクエストごとの振る舞い。テストや開発時に、リクエストを見て返す内容を決める
 export type FakeLlmScenario = {

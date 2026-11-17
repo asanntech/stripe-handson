@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm'
-import type { Db } from '../../src/infrastructure/db/client.js'
+import type { Db } from '@/infrastructure/db/client'
 
 // public スキーマの全テーブルを空にする（drizzle のマイグレーション履歴は drizzle スキーマなので対象外）
 export const truncateAllTables = async (db: Db): Promise<void> => {

@@ -1,7 +1,7 @@
 import { RPCHandler } from '@orpc/server/fetch'
 import { Hono } from 'hono'
-import { router } from './orpc/router.js'
-import type { RpcContext } from './orpc/setup.js'
+import { router } from './orpc/router'
+import type { RpcContext } from './orpc/setup'
 
 export const createApp = (deps: RpcContext) => {
   const rpcHandler = new RPCHandler(router)
