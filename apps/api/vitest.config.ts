@@ -1,5 +1,11 @@
+import { existsSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vitest/config'
+
+// リポジトリ直下の .env があれば読み込む（docker compose と同じ接続先を使うため）。
+// シェルで設定済みの環境変数は上書きしない
+const envFile = fileURLToPath(new URL('../../.env', import.meta.url))
+if (existsSync(envFile)) process.loadEnvFile(envFile)
 
 // globalSetup はテストワーカーの env を参照しないため、プロセス環境変数として既定値を入れる
 process.env.TEST_DATABASE_URL ??= 'postgres://app:app@localhost:5436/app_test'
