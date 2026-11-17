@@ -33,4 +33,29 @@ describe('FakeLlmClient', () => {
       { type: 'done', stopReason: 'end_turn', usage: { inputTokens: 2, outputTokens: 0 } },
     ])
   })
+
+  it('max_tokens を指定出力数が超えるとき max_tokens で打ち切り 終了理由を長さ上限として返す', async () => {
+    const llm = new FakeLlmClient(() => ({ inputTokens: 4, outputTokens: 10 }))
+
+    const events = await collect(llm.stream({ model: 'fake-model', prompt: 'hi', maxTokens: 3 }))
+
+    expect(events.filter((e) => e.type === 'delta')).toHaveLength(3)
+    expect(events.at(-1)).toEqual({
+      type: 'done',
+      stopReason: 'max_tokens',
+      usage: { inputTokens: 4, outputTokens: 3 },
+    })
+  })
+
+  it('指定出力数が max_tokens とちょうど等しいとき 打ち切らず end_turn で返す', async () => {
+    const llm = new FakeLlmClient(() => ({ inputTokens: 4, outputTokens: 3 }))
+
+    const events = await collect(llm.stream({ model: 'fake-model', prompt: 'hi', maxTokens: 3 }))
+
+    expect(events.at(-1)).toEqual({
+      type: 'done',
+      stopReason: 'end_turn',
+      usage: { inputTokens: 4, outputTokens: 3 },
+    })
+  })
 })

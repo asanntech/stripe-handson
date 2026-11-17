@@ -10,7 +10,8 @@ export type LlmUsage = {
   outputTokens: number
 }
 
-export type LlmStopReason = 'end_turn'
+// end_turn: 生成が自然に終わった / max_tokens: maxTokens に達して打ち切られた
+export type LlmStopReason = 'end_turn' | 'max_tokens'
 
 export type LlmStreamEvent =
   | { type: 'delta'; text: string }
