@@ -7,7 +7,7 @@ describe('マイグレーション', () => {
   const db = createDb({ connectionString: process.env.TEST_DATABASE_URL })
 
   beforeEach(async () => {
-    await truncateAllTables(db.$client)
+    await truncateAllTables(db)
   })
 
   afterAll(async () => {

@@ -1,51 +1,47 @@
-import pg from 'pg'
+import { eq, sql } from 'drizzle-orm'
 import { afterAll, beforeEach, describe, expect, it } from 'vitest'
+import { createDb } from '../../src/infrastructure/db/client.js'
+import { users } from '../../src/infrastructure/db/schema.js'
 import { createBarrier } from '../helpers/barrier.js'
 import { truncateAllTables } from '../helpers/database.js'
 import { waitUntilWaitingForLock } from '../helpers/lock.js'
 
 describe('複数接続での行ロック', () => {
-  const pool = new pg.Pool({ connectionString: process.env.TEST_DATABASE_URL, max: 3 })
+  // Tx A・Tx B・ロック待ちの観測用で 3 接続使う
+  const db = createDb({ connectionString: process.env.TEST_DATABASE_URL, max: 3 })
 
   beforeEach(async () => {
-    await truncateAllTables(pool)
+    await truncateAllTables(db)
   })
 
   afterAll(async () => {
-    await pool.end()
+    await db.$client.end()
   })
 
   it('2 接続で同じ行を FOR UPDATE したとき 後続の Tx は先行 Tx のコミットまで待たされる', async () => {
-    const {
-      rows: [user],
-    } = await pool.query<{ id: string }>("INSERT INTO users (name) VALUES ('alice') RETURNING id")
-    const clientA = await pool.connect()
-    const clientB = await pool.connect()
+    const [user] = await db.insert(users).values({ name: 'alice' }).returning()
+    const userId = user?.id ?? ''
     const aLocked = createBarrier()
+    const bPid = Promise.withResolvers<number>()
     const events: string[] = []
 
-    try {
-      const txA = (async () => {
-        await clientA.query('BEGIN')
-        await clientA.query('SELECT * FROM users WHERE id = $1 FOR UPDATE', [user?.id])
-        aLocked.open()
-        // B がロック待ちに入ったのを確認してからコミットする
-        await waitUntilWaitingForLock(pool, clientB)
-        events.push('A: commit')
-        await clientA.query('COMMIT')
-      })()
-      const txB = (async () => {
-        await aLocked.wait()
-        await clientB.query('BEGIN')
-        await clientB.query('SELECT * FROM users WHERE id = $1 FOR UPDATE', [user?.id])
+    const txA = db.transaction(async (tx) => {
+      await tx.select().from(users).where(eq(users.id, userId)).for('update')
+      aLocked.open()
+      // B がロック待ちに入ったのを確認してからコミットする（コールバックを抜けると COMMIT）
+      await waitUntilWaitingForLock(db, await bPid.promise)
+      events.push('A: commit')
+    })
+    const txB = (async () => {
+      await aLocked.wait()
+      await db.transaction(async (tx) => {
+        const { rows } = await tx.execute<{ pid: number }>(sql`SELECT pg_backend_pid() AS pid`)
+        bPid.resolve(rows[0]?.pid ?? 0)
+        await tx.select().from(users).where(eq(users.id, userId)).for('update')
         events.push('B: locked')
-        await clientB.query('COMMIT')
-      })()
-      await Promise.all([txA, txB])
-    } finally {
-      clientA.release()
-      clientB.release()
-    }
+      })
+    })()
+    await Promise.all([txA, txB])
 
     expect(events).toEqual(['A: commit', 'B: locked'])
   })
