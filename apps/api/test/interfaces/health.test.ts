@@ -23,4 +23,25 @@ describe('ヘルスチェック API', () => {
 
     expect(result).toEqual({ status: 'ok', database: 'ok' })
   })
+
+  it('DB に接続できないとき 503 のエラーを返す', async () => {
+    // 誰も待ち受けていないポートに向けて、接続失敗を再現する
+    const unreachableDb = createDb({
+      connectionString: 'postgres://app:app@localhost:1/app',
+      connectionTimeoutMillis: 1_000,
+    })
+    const app = createApp({ checkDatabase: createDatabaseHealthCheck(unreachableDb) })
+    const client: AppClient = createORPCClient(
+      new RPCLink({ url: 'http://localhost/api', fetch: async (request) => app.fetch(request) }),
+    )
+
+    try {
+      await expect(client.health.check()).rejects.toMatchObject({
+        code: 'SERVICE_UNAVAILABLE',
+        status: 503,
+      })
+    } finally {
+      await unreachableDb.$client.end()
+    }
+  })
 })

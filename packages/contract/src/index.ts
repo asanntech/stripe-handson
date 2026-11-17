@@ -4,12 +4,16 @@ import { z } from 'zod'
 // API の仕様（input / output / ルート）。サーバーはこれを implement し、クライアントはこれだけに依存する
 export const contract = {
   health: {
-    check: oc.output(
-      z.object({
-        status: z.literal('ok'),
-        database: z.literal('ok'),
-      }),
-    ),
+    check: oc
+      .errors({
+        SERVICE_UNAVAILABLE: { status: 503, message: 'Database is unavailable' },
+      })
+      .output(
+        z.object({
+          status: z.literal('ok'),
+          database: z.literal('ok'),
+        }),
+      ),
   },
 }
 
