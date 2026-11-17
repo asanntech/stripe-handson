@@ -1,7 +1,7 @@
 import { createORPCClient } from '@orpc/client'
 import { RPCLink } from '@orpc/client/fetch'
 import type { AppClient } from '@stripe-handson/contract'
-import { afterAll, describe, expect, it } from 'vitest'
+import { afterAll, afterEach, describe, expect, it, vi } from 'vitest'
 import { createDb } from '@/infrastructure/db/client'
 import { createDatabaseHealthCheck } from '@/infrastructure/db/health-check'
 import { createApp } from '@/interfaces/app'
@@ -11,6 +11,10 @@ describe('ヘルスチェック API', () => {
 
   afterAll(async () => {
     await db.$client.end()
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
   })
 
   it('呼んだとき DB 疎通を含めて ok を返す', async () => {
@@ -43,5 +47,28 @@ describe('ヘルスチェック API', () => {
     } finally {
       await unreachableDb.$client.end()
     }
+  })
+
+  it('DB に接続できないとき 503 の原因をサーバー側のログに出す', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const unreachableDb = createDb({
+      connectionString: 'postgres://app:app@localhost:1/app',
+      connectionTimeoutMillis: 1_000,
+    })
+    const app = createApp({ checkDatabase: createDatabaseHealthCheck(unreachableDb) })
+    const client: AppClient = createORPCClient(
+      new RPCLink({ url: 'http://localhost/api', fetch: async (request) => app.fetch(request) }),
+    )
+
+    try {
+      await client.health.check().catch(() => {})
+    } finally {
+      await unreachableDb.$client.end()
+    }
+
+    expect(consoleError).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ type: 'database_unavailable', cause: expect.anything() }),
+    )
   })
 })
