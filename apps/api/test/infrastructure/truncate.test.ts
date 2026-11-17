@@ -1,19 +1,17 @@
-import pg from 'pg'
 import { afterAll, beforeEach, describe, expect, it } from 'vitest'
 import { createDb } from '../../src/infrastructure/db/client.js'
 import { users } from '../../src/infrastructure/db/schema.js'
 import { truncateAllTables } from '../helpers/database.js'
 
 describe('テスト間の TRUNCATE 分離', () => {
-  const pool = new pg.Pool({ connectionString: process.env.TEST_DATABASE_URL })
-  const db = createDb(pool)
+  const db = createDb({ connectionString: process.env.TEST_DATABASE_URL })
 
   beforeEach(async () => {
-    await truncateAllTables(pool)
+    await truncateAllTables(db.$client)
   })
 
   afterAll(async () => {
-    await pool.end()
+    await db.$client.end()
   })
 
   it('前のテストで users に行を INSERT する', async () => {
