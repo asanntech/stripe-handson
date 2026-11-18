@@ -2,9 +2,9 @@ import { createORPCClient } from '@orpc/client'
 import { RPCLink } from '@orpc/client/fetch'
 import type { AppClient } from '@stripe-handson/contract'
 import { afterAll, afterEach, describe, expect, it, vi } from 'vitest'
+import { createAppDeps } from '@/composition'
 import { requireEnv } from '@/config'
 import { createDb } from '@/infrastructure/db/client'
-import { createDatabaseHealthCheck } from '@/infrastructure/db/health-check'
 import { createApp } from '@/interfaces/app'
 
 describe('ヘルスチェック API', () => {
@@ -19,7 +19,7 @@ describe('ヘルスチェック API', () => {
   })
 
   it('呼んだとき DB 疎通を含めて ok を返す', async () => {
-    const app = createApp({ checkDatabase: createDatabaseHealthCheck(db) })
+    const app = createApp(createAppDeps({ db }))
     const client: AppClient = createORPCClient(
       new RPCLink({ url: 'http://localhost/api', fetch: async (request) => app.fetch(request) }),
     )
@@ -35,7 +35,7 @@ describe('ヘルスチェック API', () => {
       connectionString: 'postgres://app:app@localhost:1/app',
       connectionTimeoutMillis: 1_000,
     })
-    const app = createApp({ checkDatabase: createDatabaseHealthCheck(unreachableDb) })
+    const app = createApp(createAppDeps({ db: unreachableDb }))
     const client: AppClient = createORPCClient(
       new RPCLink({ url: 'http://localhost/api', fetch: async (request) => app.fetch(request) }),
     )
@@ -56,7 +56,7 @@ describe('ヘルスチェック API', () => {
       connectionString: 'postgres://app:app@localhost:1/app',
       connectionTimeoutMillis: 1_000,
     })
-    const app = createApp({ checkDatabase: createDatabaseHealthCheck(unreachableDb) })
+    const app = createApp(createAppDeps({ db: unreachableDb }))
     const client: AppClient = createORPCClient(
       new RPCLink({ url: 'http://localhost/api', fetch: async (request) => app.fetch(request) }),
     )
@@ -80,6 +80,7 @@ describe('ヘルスチェック API', () => {
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
     const bug = new Error('想定外のバグ')
     const app = createApp({
+      ...createAppDeps({ db }),
       checkDatabase: () => {
         throw bug
       },
@@ -97,7 +98,7 @@ describe('ヘルスチェック API', () => {
 
   it('リクエストが壊れていて 4xx を返すとき サーバー側のログには出さない', async () => {
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
-    const app = createApp({ checkDatabase: createDatabaseHealthCheck(db) })
+    const app = createApp(createAppDeps({ db }))
 
     const response = await app.fetch(
       new Request('http://localhost/api/health/check', {
@@ -117,7 +118,7 @@ describe('ヘルスチェック API', () => {
       connectionString: 'postgres://app:app@localhost:1/app',
       connectionTimeoutMillis: 1_000,
     })
-    const app = createApp({ checkDatabase: createDatabaseHealthCheck(unreachableDb) })
+    const app = createApp(createAppDeps({ db: unreachableDb }))
 
     try {
       const response = await app.fetch(

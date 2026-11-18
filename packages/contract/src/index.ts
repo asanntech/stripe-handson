@@ -15,6 +15,9 @@ export const contract = {
         }),
       ),
   },
+  conversations: {
+    create: oc.output(z.object({ conversationId: z.uuid() })),
+  },
 }
 
 export type AppContract = typeof contract

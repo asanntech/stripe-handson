@@ -1,3 +1,4 @@
+import { ORPCError } from '@orpc/server'
 import { orpc } from './setup'
 
 export const router = orpc.router({
@@ -8,6 +9,13 @@ export const router = orpc.router({
       // 原因は cause に持たせるだけ。ログは app.ts の onError インターセプターが出す（クライアントには返らない）
       if (result.isErr()) throw errors.SERVICE_UNAVAILABLE({ cause: result.error })
       return { status: 'ok', database: 'ok' }
+    }),
+  },
+  conversations: {
+    create: orpc.conversations.create.handler(async ({ context }) => {
+      const result = await context.conversations.create(context.userId ?? '')
+      if (result.isErr()) throw new ORPCError('INTERNAL_SERVER_ERROR', { cause: result.error })
+      return { conversationId: result.value.id }
     }),
   },
 })
