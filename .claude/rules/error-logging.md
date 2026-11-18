@@ -22,6 +22,11 @@ logger を導入するまでは `console.error` を使う。ログを出す場�
   - `interceptors` ではなく `clientInterceptors` に登録する。`interceptors` はリクエストの解析エラー（壊れた JSON の `SyntaxError` など、oRPC が 400 にするもの）まで生の例外のまま拾い、5xx と誤判定するため
 - Hono の素のルート（第 6 章の Stripe Webhook など）を追加するときも、5xx のログは同じ `logServerError` を通す
 
+## 未対応（第 1 章で対応する）
+
+- **ストリーミング中のエラーはログに出ない。** `onError` はハンドラーが値を返すまでの例外しか拾わない。イベントイテレータでストリームを返す procedure では、返した後に起きた例外が届かない（クライアントには 500 が届くが、ログには残らない）。第 1 章で LLM のストリーミングを作るときに、再現テストを書いてから `mapEventIterator` などでストリームも包む
+- **ログに procedure 名（`path`）が出ない。** 上の対応でインターセプターを書き直すときに、どこで起きたかが分かるよう `path` を含める
+
 ## テスト
 
 - 5xx を返す経路では、`vi.spyOn(console, 'error')` で原因付きのエラーがログに出ることを確かめる
