@@ -18,4 +18,17 @@ export const router = orpc.router({
       return { conversationId: result.value.id }
     }),
   },
+  messages: {
+    send: orpc.messages.send.handler(async function* ({ input, context }) {
+      const stream = context.llm.stream({
+        model: 'fake-model',
+        prompt: input.content,
+        maxTokens: 1024,
+      })
+      for await (const event of stream) {
+        if (event.type === 'delta') yield { type: 'delta', text: event.text }
+      }
+      yield { type: 'done', messageId: crypto.randomUUID() }
+    }),
+  },
 })
