@@ -110,4 +110,30 @@ describe('ヘルスチェック API', () => {
     expect(response.status).toBe(400)
     expect(consoleError).not.toHaveBeenCalled()
   })
+
+  it('DB に接続できないとき 503 のレスポンスには原因（cause）を含めない', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const unreachableDb = createDb({
+      connectionString: 'postgres://app:app@localhost:1/app',
+      connectionTimeoutMillis: 1_000,
+    })
+    const app = createApp({ checkDatabase: createDatabaseHealthCheck(unreachableDb) })
+
+    try {
+      const response = await app.fetch(
+        new Request('http://localhost/api/health/check', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: '{}',
+        }),
+      )
+      const body = await response.text()
+
+      expect(response.status).toBe(503)
+      expect(body).not.toContain('database_unavailable')
+      expect(body).not.toContain('ECONNREFUSED')
+    } finally {
+      await unreachableDb.$client.end()
+    }
+  })
 })
