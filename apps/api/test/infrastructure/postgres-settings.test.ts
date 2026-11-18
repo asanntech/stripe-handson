@@ -1,9 +1,10 @@
 import { sql } from 'drizzle-orm'
 import { afterAll, describe, expect, it } from 'vitest'
+import { requireEnv } from '@/config'
 import { createDb } from '@/infrastructure/db/client'
 
 describe('テスト用 PostgreSQL の設定', () => {
-  const db = createDb({ connectionString: process.env.TEST_DATABASE_URL })
+  const db = createDb({ connectionString: requireEnv('TEST_DATABASE_URL') })
 
   afterAll(async () => {
     await db.$client.end()

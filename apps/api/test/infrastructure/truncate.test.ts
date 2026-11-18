@@ -5,7 +5,7 @@ import { users } from '@/infrastructure/db/schema'
 import { truncateAllTables } from '../helpers/database'
 
 describe('テスト間の TRUNCATE 分離', () => {
-  const db = createDb({ connectionString: process.env.TEST_DATABASE_URL })
+  const db = createDb({ connectionString: requireEnv('TEST_DATABASE_URL') })
 
   beforeEach(async () => {
     await truncateAllTables(db)
