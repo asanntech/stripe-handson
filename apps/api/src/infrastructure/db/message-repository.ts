@@ -2,12 +2,12 @@ import { and, eq } from 'drizzle-orm'
 import { errAsync, okAsync, ResultAsync } from 'neverthrow'
 import type { MessageRepository } from '@/usecases/ports/message-repository'
 import type { RepositoryError } from '@/usecases/ports/repository-error'
-import type { Db } from './client'
+import type { DbExecutor } from './client'
 import { assistantMessages, userMessages } from './schema'
 
 const toRepositoryError = (cause: unknown): RepositoryError => ({ type: 'database_error', cause })
 
-export const createMessageRepository = (db: Db): MessageRepository => ({
+export const createMessageRepository = (db: DbExecutor): MessageRepository => ({
   createUserMessage: (message) =>
     ResultAsync.fromPromise(
       db
