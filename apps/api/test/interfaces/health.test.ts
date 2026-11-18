@@ -66,9 +66,47 @@ describe('ヘルスチェック API', () => {
       await unreachableDb.$client.end()
     }
 
+    // ログは onError インターセプター 1 か所で、原因（cause）付きの ORPCError として出る
     expect(consoleError).toHaveBeenCalledWith(
-      expect.any(String),
-      expect.objectContaining({ type: 'database_unavailable', cause: expect.anything() }),
+      expect.objectContaining({
+        code: 'SERVICE_UNAVAILABLE',
+        cause: expect.objectContaining({ type: 'database_unavailable', cause: expect.anything() }),
+      }),
     )
+  })
+
+  it('ハンドラーで想定外の例外が起きたとき 500 を返し その例外をサーバー側のログに出す', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const bug = new Error('想定外のバグ')
+    const app = createApp({
+      checkDatabase: () => {
+        throw bug
+      },
+    })
+    const client: AppClient = createORPCClient(
+      new RPCLink({ url: 'http://localhost/api', fetch: async (request) => app.fetch(request) }),
+    )
+
+    await expect(client.health.check()).rejects.toMatchObject({
+      code: 'INTERNAL_SERVER_ERROR',
+      status: 500,
+    })
+    expect(consoleError).toHaveBeenCalledWith(bug)
+  })
+
+  it('リクエストが壊れていて 4xx を返すとき サーバー側のログには出さない', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const app = createApp({ checkDatabase: createDatabaseHealthCheck(db) })
+
+    const response = await app.fetch(
+      new Request('http://localhost/api/health/check', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: '{not json',
+      }),
+    )
+
+    expect(response.status).toBe(400)
+    expect(consoleError).not.toHaveBeenCalled()
   })
 })
