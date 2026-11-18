@@ -15,4 +15,4 @@ export type RpcContext = {
 }
 
 // TODO(401 のサイクル): userId は認証ミドルウェアが X-User-Id から足す Execution Context に置き換える
-export const orpc = implement(contract).$context<RpcContext & { userId: string | undefined }>()
+export const orpc = implement(contract).$context<RpcContext & { userId: string | null }>()

@@ -14,7 +14,7 @@ export const createHonoApp = (context: RpcContext) => {
   app.use('/api/*', async (c, next) => {
     const { matched, response } = await rpcHandler.handle(c.req.raw, {
       prefix: '/api',
-      context: { ...context, userId: c.req.header('x-user-id') },
+      context: { ...context, userId: c.req.header('x-user-id') ?? null },
     })
     if (matched) return c.newResponse(response.body, response)
     await next()
