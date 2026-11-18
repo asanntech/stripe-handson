@@ -6,7 +6,8 @@ import type { RepositoryError } from '@/usecases/ports/repository-error'
 const MODEL = 'fake-model'
 const MAX_TOKENS = 1024
 
-export type SendMessageError = RepositoryError
+// message_in_progress: 同じ client_message_id の送信が生成中（または失敗）で、返せる応答がない
+export type SendMessageError = RepositoryError | { type: 'message_in_progress' }
 
 // delta を 0 回以上流したあと、done か error のどちらか 1 つで終わる（エラーは throw せず値で返す）
 export type SendMessageEvent =
@@ -21,6 +22,10 @@ export async function* sendMessage(
 ): AsyncGenerator<SendMessageEvent> {
   const accepted = await deps.messages.createUserMessage(input)
   if (accepted.isErr()) {
+    if (accepted.error.type === 'duplicate_client_message') {
+      yield* replayExisting(deps.messages, input)
+      return
+    }
     yield { type: 'error', error: accepted.error }
     return
   }
@@ -46,4 +51,23 @@ export async function* sendMessage(
     return
   }
   yield { type: 'done', messageId: completed.value.id }
+}
+
+// 再送: LLM を呼ばず、保存済みの応答を 1 つの delta にまとめて返す
+async function* replayExisting(
+  messages: MessageRepository,
+  input: NewUserMessage,
+): AsyncGenerator<SendMessageEvent> {
+  const found = await messages.findByClientMessageId(input)
+  if (found.isErr()) {
+    yield { type: 'error', error: found.error }
+    return
+  }
+  const reply = found.value?.reply
+  if (!reply) {
+    yield { type: 'error', error: { type: 'message_in_progress' } }
+    return
+  }
+  yield { type: 'delta', text: reply.content }
+  yield { type: 'done', messageId: reply.id }
 }

@@ -91,4 +91,41 @@ describe('メッセージ API', () => {
     expect(replies).toEqual([expect.objectContaining({ content: 'token1 token2 token3 ' })])
     expect(events.at(-1)).toEqual({ type: 'done', messageId: replies[0]?.id })
   })
+
+  it('完了済みの client_message_id で再送したとき LLM を呼ばずに保存済みの応答を返す', async () => {
+    const [alice] = await db.insert(users).values({ name: 'alice' }).returning()
+    if (!alice) throw new Error('準備: users の INSERT が行を返しませんでした')
+    const [conversation] = await db.insert(conversations).values({ userId: alice.id }).returning()
+    if (!conversation) throw new Error('準備: conversations の INSERT が行を返しませんでした')
+    let llmCalls = 0
+    const llm = new FakeLlmClient(() => {
+      llmCalls++
+      return { inputTokens: 5, outputTokens: 3 }
+    })
+    const app = createHonoApp(createTestRpcContext({ db, llm }))
+    const client: AppClient = createORPCClient(
+      new RPCLink({
+        url: 'http://localhost/api',
+        headers: { 'x-user-id': alice.id },
+        fetch: async (request) => app.fetch(request),
+      }),
+    )
+    const input = {
+      conversationId: conversation.id,
+      clientMessageId: crypto.randomUUID(),
+      content: 'こんにちは',
+    }
+    const firstEvents = []
+    for await (const event of await client.messages.send(input)) firstEvents.push(event)
+
+    const retryEvents = []
+    for await (const event of await client.messages.send(input)) retryEvents.push(event)
+
+    expect(retryEvents).toEqual([
+      { type: 'delta', text: 'token1 token2 token3 ' },
+      firstEvents.at(-1),
+    ])
+    expect(llmCalls).toBe(1)
+    expect(await db.select().from(userMessages)).toHaveLength(1)
+  })
 })
