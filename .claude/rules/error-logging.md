@@ -17,10 +17,10 @@ logger を導入するまでは `console.error` を使う。ログを出す場�
   if (result.isErr()) throw errors.SERVICE_UNAVAILABLE({ cause: result.error })
   ```
 
-- **ログは `apps/api/src/interfaces/app.ts` の `logServerError` 1 か所で出す。** oRPC の `RPCHandler` に `clientInterceptors: [onError(logServerError)]` として登録している
+- **ログは `apps/api/src/interfaces/orpc/log-server-error.ts` の `logServerError` 1 か所で出す。** `apps/api/src/interfaces/hono/app.ts` で oRPC の `RPCHandler` に `clientInterceptors: [onError(logServerError)]` として登録している
   - `ORPCError` は `status` が 500 以上のときだけ出す。`ORPCError` 以外の例外（バグ）は 500 とみなして出す
   - `interceptors` ではなく `clientInterceptors` に登録する。`interceptors` はリクエストの解析エラー（壊れた JSON の `SyntaxError` など、oRPC が 400 にするもの）まで生の例外のまま拾い、5xx と誤判定するため
-- Hono の素のルート（第 6 章の Stripe Webhook など）を追加するときも、5xx のログは同じ `logServerError` を通す
+- Hono の素のルート（第 6 章の Stripe Webhook など）を追加するときも、5xx のログは同じ `logServerError` を通す（そのときに `ORPCError` 以外のエラーにも対応させ、`orpc/` の外へ置き場所を見直す）
 
 ## 未対応（第 1 章で対応する）
 

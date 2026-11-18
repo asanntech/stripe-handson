@@ -1,6 +1,6 @@
 import { ORPCError } from '@orpc/server'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { logServerError } from '@/interfaces/app'
+import { logServerError } from '@/interfaces/orpc/log-server-error'
 
 describe('logServerError', () => {
   afterEach(() => {

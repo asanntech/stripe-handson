@@ -3,12 +3,12 @@ import { RPCLink } from '@orpc/client/fetch'
 import type { AppClient } from '@stripe-handson/contract'
 import { eq } from 'drizzle-orm'
 import { afterAll, beforeEach, describe, expect, it } from 'vitest'
-import { createAppDeps } from '@/composition'
 import { requireEnv } from '@/config'
 import { createDb } from '@/infrastructure/db/client'
 import { conversations, users } from '@/infrastructure/db/schema'
-import { createApp } from '@/interfaces/app'
+import { createHonoApp } from '@/interfaces/hono/app'
 import { truncateAllTables } from '../helpers/database'
+import { createTestRpcContext } from '../helpers/rpc-context'
 
 describe('会話 API', () => {
   const db = createDb({ connectionString: requireEnv('TEST_DATABASE_URL') })
@@ -24,7 +24,7 @@ describe('会話 API', () => {
   it('X-User-Id のユーザーが会話を作成したとき 会話 ID を返す', async () => {
     const [alice] = await db.insert(users).values({ name: 'alice' }).returning()
     if (!alice) throw new Error('準備: users の INSERT が行を返しませんでした')
-    const app = createApp(createAppDeps({ db }))
+    const app = createHonoApp(createTestRpcContext({ db }))
     const client: AppClient = createORPCClient(
       new RPCLink({
         url: 'http://localhost/api',

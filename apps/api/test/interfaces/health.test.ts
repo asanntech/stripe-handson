@@ -2,10 +2,10 @@ import { createORPCClient } from '@orpc/client'
 import { RPCLink } from '@orpc/client/fetch'
 import type { AppClient } from '@stripe-handson/contract'
 import { afterAll, afterEach, describe, expect, it, vi } from 'vitest'
-import { createAppDeps } from '@/composition'
 import { requireEnv } from '@/config'
 import { createDb } from '@/infrastructure/db/client'
-import { createApp } from '@/interfaces/app'
+import { createHonoApp } from '@/interfaces/hono/app'
+import { createTestRpcContext } from '../helpers/rpc-context'
 
 describe('ヘルスチェック API', () => {
   const db = createDb({ connectionString: requireEnv('TEST_DATABASE_URL') })
@@ -19,7 +19,7 @@ describe('ヘルスチェック API', () => {
   })
 
   it('呼んだとき DB 疎通を含めて ok を返す', async () => {
-    const app = createApp(createAppDeps({ db }))
+    const app = createHonoApp(createTestRpcContext({ db }))
     const client: AppClient = createORPCClient(
       new RPCLink({ url: 'http://localhost/api', fetch: async (request) => app.fetch(request) }),
     )
@@ -35,7 +35,7 @@ describe('ヘルスチェック API', () => {
       connectionString: 'postgres://app:app@localhost:1/app',
       connectionTimeoutMillis: 1_000,
     })
-    const app = createApp(createAppDeps({ db: unreachableDb }))
+    const app = createHonoApp(createTestRpcContext({ db: unreachableDb }))
     const client: AppClient = createORPCClient(
       new RPCLink({ url: 'http://localhost/api', fetch: async (request) => app.fetch(request) }),
     )
@@ -56,7 +56,7 @@ describe('ヘルスチェック API', () => {
       connectionString: 'postgres://app:app@localhost:1/app',
       connectionTimeoutMillis: 1_000,
     })
-    const app = createApp(createAppDeps({ db: unreachableDb }))
+    const app = createHonoApp(createTestRpcContext({ db: unreachableDb }))
     const client: AppClient = createORPCClient(
       new RPCLink({ url: 'http://localhost/api', fetch: async (request) => app.fetch(request) }),
     )
@@ -79,8 +79,8 @@ describe('ヘルスチェック API', () => {
   it('ハンドラーで想定外の例外が起きたとき 500 を返し その例外をサーバー側のログに出す', async () => {
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
     const bug = new Error('想定外のバグ')
-    const app = createApp({
-      ...createAppDeps({ db }),
+    const app = createHonoApp({
+      ...createTestRpcContext({ db }),
       checkDatabase: () => {
         throw bug
       },
@@ -98,7 +98,7 @@ describe('ヘルスチェック API', () => {
 
   it('リクエストが壊れていて 4xx を返すとき サーバー側のログには出さない', async () => {
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
-    const app = createApp(createAppDeps({ db }))
+    const app = createHonoApp(createTestRpcContext({ db }))
 
     const response = await app.fetch(
       new Request('http://localhost/api/health/check', {
@@ -118,7 +118,7 @@ describe('ヘルスチェック API', () => {
       connectionString: 'postgres://app:app@localhost:1/app',
       connectionTimeoutMillis: 1_000,
     })
-    const app = createApp(createAppDeps({ db: unreachableDb }))
+    const app = createHonoApp(createTestRpcContext({ db: unreachableDb }))
 
     try {
       const response = await app.fetch(

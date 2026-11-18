@@ -24,7 +24,7 @@ pnpm typecheck    # tsc --noEmit
 | `domain/` | 業務ルール（純粋な計算）。他の層・ライブラリに依存しない |
 | `usecases/` | ユースケース。Tx 境界を持つ。外部依存は `usecases/ports/` のインターフェース経由 |
 | `infrastructure/` | ポートの実装（Drizzle・Stripe・Fake LLM など） |
-| `interfaces/` | 入口。oRPC の procedure（`interfaces/orpc/`）、Hono の素のルート |
+| `interfaces/` | 入口。oRPC の procedure（`interfaces/orpc/`）、Hono のアプリと素のルート（`interfaces/hono/`） |
 | `main.ts` | コンポジションルート（依存の組み立てのみ） |
 
 - 依存は外側 → 内側のみ（interfaces / infrastructure → usecases → domain）
