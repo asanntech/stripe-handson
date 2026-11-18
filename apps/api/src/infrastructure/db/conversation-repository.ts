@@ -1,8 +1,6 @@
 import { ResultAsync } from 'neverthrow'
-import type {
-  ConversationRepository,
-  RepositoryError,
-} from '@/usecases/ports/conversation-repository'
+import type { ConversationRepository } from '@/usecases/ports/conversation-repository'
+import type { RepositoryError } from '@/usecases/ports/repository-error'
 import type { Db } from './client'
 import { conversations } from './schema'
 

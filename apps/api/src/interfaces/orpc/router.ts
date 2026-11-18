@@ -1,4 +1,5 @@
 import { ORPCError } from '@orpc/server'
+import { sendMessage } from '@/usecases/send-message'
 import { orpc } from './setup'
 
 export const router = orpc.router({
@@ -20,15 +21,12 @@ export const router = orpc.router({
   },
   messages: {
     send: orpc.messages.send.handler(async function* ({ input, context }) {
-      const stream = context.llm.stream({
-        model: 'fake-model',
-        prompt: input.content,
-        maxTokens: 1024,
-      })
-      for await (const event of stream) {
-        if (event.type === 'delta') yield { type: 'delta', text: event.text }
+      const events = sendMessage({ messages: context.messages, llm: context.llm }, input)
+      for await (const event of events) {
+        if (event.type === 'error')
+          throw new ORPCError('INTERNAL_SERVER_ERROR', { cause: event.error })
+        yield event
       }
-      yield { type: 'done', messageId: crypto.randomUUID() }
     }),
   },
 })

@@ -61,7 +61,9 @@ Stripe と連携した「トークン消費型 AI チャット」を題材に網
 | テーブル | 役割 | 主な制約 / インデックス |
 |---|---|---|
 | `users` | ユーザー | |
-| `conversations` / `messages` | 会話・メッセージ | `UNIQUE (conversation_id, client_message_id)`、カーソルページング用複合 index |
+| `conversations` | 会話 | |
+| `user_messages` | ユーザーの送信（本文・状態: 生成中 / 完了 / 失敗） | `UNIQUE (conversation_id, client_message_id)`、カーソルページング用複合 index |
+| `assistant_messages` | LLM の応答（完了時のみ作成） | `UNIQUE (user_message_id)`（送信 1 回に応答 1 つ） |
 | `model_prices` | 単価表（履歴） | `(model, effective_from)` |
 | `usage_records` | 利用履歴（入出力トークン・適用単価・消費クレジット） | `UNIQUE (message_id)`（二重課金防止） |
 | `wallets` | ユーザーごと 1 行。残高キャッシュ・未精算額・version | **ロックの起点**。`CHECK (balance >= -limit)` |
@@ -196,6 +198,7 @@ DB 関連のバグを機械的に止めることを主目的とする。
 | Webhook | 受信箱 ＋ 非同期ワーカー | 同期処理 / 段階移行 | `SKIP LOCKED`・リトライ・部分インデックスまで学べる |
 | 購入記録 | 先に自前の購入行を作成 | Webhook 受信後に作成 | 自社 API と Stripe API 双方の冪等キーを学べる |
 | 送信の冪等性 | `client_message_id` ＋ 課金 1 回 | ストリーム再開まで / 後付け | DB 学習に集中 |
+| メッセージのテーブル | 送信 `user_messages` と応答 `assistant_messages` に分割 | `messages` 1 テーブル ＋ role 列 / 1 ターン 1 行 | 役割ごとの列を NOT NULL にでき、拡張時も該当テーブルだけを触ればよい。「送信 1 回に応答 1 つ」を UNIQUE で保証できる |
 | 返金 | アプリ発（Outbox）＋ ダッシュボード発 | ダッシュボード発のみ / なし | Outbox の題材 |
 | 月次付与 | 遅延付与 ＋ 失効バッチ | 月初一括 / 両方 | 休眠ユーザー分を作らない。経路を一本化 |
 | DB アクセス | Drizzle | Prisma / Kysely / 生 SQL | ロック句・UPSERT・部分インデックスを生 SQL なしで書ける |
