@@ -1,4 +1,5 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest'
+import { requireEnv } from '@/config'
 import { createDb } from '@/infrastructure/db/client'
 import { users } from '@/infrastructure/db/schema'
 import { truncateAllTables } from '../helpers/database'
@@ -26,7 +27,7 @@ describe('テスト間の TRUNCATE 分離', () => {
 
   it('接続先の DB 名が _test で終わらないとき 何も消さずにエラーにする', async () => {
     // 誤って開発用 DB に向けた状況を、テーブルの無い保守用 DB（postgres）で再現する
-    const url = new URL(process.env.TEST_DATABASE_URL ?? '')
+    const url = new URL(requireEnv('TEST_DATABASE_URL'))
     url.pathname = '/postgres'
     const nonTestDb = createDb({ connectionString: url.toString() })
 
