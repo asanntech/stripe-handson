@@ -21,6 +21,12 @@ export const contract = {
   messages: {
     // 応答はイベントイテレータでストリームする（delta を 0 回以上 → 最後に done）
     send: oc
+      .errors({
+        MESSAGE_IN_PROGRESS: {
+          status: 409,
+          message: 'A message with the same clientMessageId is still being generated',
+        },
+      })
       .input(
         z.object({
           conversationId: z.uuid(),
