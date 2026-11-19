@@ -12,6 +12,7 @@ export type DuplicateClientMessageError = { type: 'duplicate_client_message' }
 
 export type SentMessage = {
   id: string
+  status: 'generating' | 'completed' | 'failed'
   // 応答は完了したときだけある
   reply: { id: string; content: string } | null
 }
@@ -25,6 +26,8 @@ export interface MessageRepository {
     conversationId: string
     clientMessageId: string
   }): ResultAsync<SentMessage | null, RepositoryError>
+  // 「失敗」の送信を「生成中」に戻す（条件付き UPDATE）。同時に呼ばれても true になるのは 1 つだけ
+  claimFailedForRetry(userMessageId: string): ResultAsync<boolean, RepositoryError>
   // 応答を保存し、送信を「完了」にする
   complete(reply: {
     userMessageId: string

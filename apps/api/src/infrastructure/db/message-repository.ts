@@ -28,6 +28,7 @@ export const createMessageRepository = (db: DbExecutor): MessageRepository => ({
       db
         .select({
           id: userMessages.id,
+          status: userMessages.status,
           replyId: assistantMessages.id,
           replyContent: assistantMessages.content,
         })
@@ -42,11 +43,23 @@ export const createMessageRepository = (db: DbExecutor): MessageRepository => ({
       toRepositoryError,
     ).map(([row]) => {
       if (!row) return null
-      const { id, replyId, replyContent } = row
+      const { id, status, replyId, replyContent } = row
       const reply =
         replyId !== null && replyContent !== null ? { id: replyId, content: replyContent } : null
-      return { id, reply }
+      return { id, status, reply }
     }),
+
+  // WHERE に status = 'failed' を含めるので、同時に実行されても先に行ロックを取った 1 つだけが更新できる
+  // （後続は先行のコミットを待ってから条件を再評価し、0 行になる）
+  claimFailedForRetry: (userMessageId) =>
+    ResultAsync.fromPromise(
+      db
+        .update(userMessages)
+        .set({ status: 'generating' })
+        .where(and(eq(userMessages.id, userMessageId), eq(userMessages.status, 'failed')))
+        .returning({ id: userMessages.id }),
+      toRepositoryError,
+    ).map((rows) => rows.length === 1),
 
   // 応答の INSERT と送信の状態更新は同じ Tx で行う（片方だけ反映されないように）
   complete: ({ userMessageId, content }) =>

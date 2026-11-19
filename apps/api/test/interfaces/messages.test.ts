@@ -194,4 +194,111 @@ describe('メッセージ API', () => {
     // 409 はクライアント起因なのでサーバー側のログに出さない
     expect(consoleError).not.toHaveBeenCalled()
   })
+
+  it('失敗した client_message_id で再送したとき 同じ送信として再生成する', async () => {
+    const [alice] = await db.insert(users).values({ name: 'alice' }).returning()
+    if (!alice) throw new Error('準備: users の INSERT が行を返しませんでした')
+    const [conversation] = await db.insert(conversations).values({ userId: alice.id }).returning()
+    if (!conversation) throw new Error('準備: conversations の INSERT が行を返しませんでした')
+    const clientMessageId = crypto.randomUUID()
+    const [failed] = await db
+      .insert(userMessages)
+      .values({
+        conversationId: conversation.id,
+        clientMessageId,
+        content: 'こんにちは',
+        status: 'failed',
+      })
+      .returning()
+    if (!failed) throw new Error('準備: user_messages の INSERT が行を返しませんでした')
+    const llm = new FakeLlmClient(() => ({ inputTokens: 5, outputTokens: 2 }))
+    const app = createHonoApp(createTestRpcContext({ db, llm }))
+    const client: AppClient = createORPCClient(
+      new RPCLink({
+        url: 'http://localhost/api',
+        headers: { 'x-user-id': alice.id },
+        fetch: async (request) => app.fetch(request),
+      }),
+    )
+
+    const events = []
+    for await (const event of await client.messages.send({
+      conversationId: conversation.id,
+      clientMessageId,
+      content: 'こんにちは',
+    }))
+      events.push(event)
+
+    expect(events.slice(0, -1)).toEqual([
+      { type: 'delta', text: 'token1 ' },
+      { type: 'delta', text: 'token2 ' },
+    ])
+    const sent = await db.select().from(userMessages)
+    expect(sent).toEqual([expect.objectContaining({ id: failed.id, status: 'completed' })])
+    const replies = await db.select().from(assistantMessages)
+    expect(replies).toEqual([
+      expect.objectContaining({ userMessageId: failed.id, content: 'token1 token2 ' }),
+    ])
+    expect(events.at(-1)).toEqual({ type: 'done', messageId: replies[0]?.id })
+  })
+
+  it('失敗した送信への再送が同時に来たとき（A の再生成中に B を送る順にバリアで固定）B は 409 になり LLM は 1 回しか呼ばれない', async () => {
+    const [alice] = await db.insert(users).values({ name: 'alice' }).returning()
+    if (!alice) throw new Error('準備: users の INSERT が行を返しませんでした')
+    const [conversation] = await db.insert(conversations).values({ userId: alice.id }).returning()
+    if (!conversation) throw new Error('準備: conversations の INSERT が行を返しませんでした')
+    const clientMessageId = crypto.randomUUID()
+    await db.insert(userMessages).values({
+      conversationId: conversation.id,
+      clientMessageId,
+      content: 'こんにちは',
+      status: 'failed',
+    })
+    const aStreaming = createBarrier()
+    const bFinished = createBarrier()
+    let llmCalls = 0
+    const fake = new FakeLlmClient(() => ({ inputTokens: 5, outputTokens: 3 }))
+    // A の LLM 呼び出しを、B が終わるまで止めておく（その間 A の再送は「生成中」のまま）
+    const llm: LlmClient = {
+      async *stream(request) {
+        llmCalls++
+        aStreaming.open()
+        await bFinished.wait()
+        yield* fake.stream(request)
+      },
+    }
+    const app = createHonoApp(createTestRpcContext({ db, llm }))
+    const client: AppClient = createORPCClient(
+      new RPCLink({
+        url: 'http://localhost/api',
+        headers: { 'x-user-id': alice.id },
+        fetch: async (request) => app.fetch(request),
+      }),
+    )
+    const input = { conversationId: conversation.id, clientMessageId, content: 'こんにちは' }
+
+    const sendA = (async () => {
+      const events = []
+      for await (const event of await client.messages.send(input)) events.push(event)
+      return events
+    })()
+    const sendB = (async () => {
+      await aStreaming.wait()
+      try {
+        for await (const _ of await client.messages.send(input)) {
+          // B は最初のイベントの前にエラーになるはず
+        }
+        return null
+      } catch (error) {
+        return error
+      } finally {
+        bFinished.open()
+      }
+    })()
+    const [eventsA, errorB] = await Promise.all([sendA, sendB])
+
+    expect(errorB).toMatchObject({ code: 'MESSAGE_IN_PROGRESS', status: 409 })
+    expect(eventsA.at(-1)).toEqual({ type: 'done', messageId: expect.any(String) })
+    expect(llmCalls).toBe(1)
+  })
 })
