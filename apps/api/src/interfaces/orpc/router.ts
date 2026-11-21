@@ -21,9 +21,13 @@ export const router = orpc.router({
   },
   messages: {
     send: authedOrpc.messages.send.handler(async function* ({ input, context, errors }) {
-      const events = sendMessage({ messages: context.messages, llm: context.llm }, input)
+      const events = sendMessage(
+        { conversations: context.conversations, messages: context.messages, llm: context.llm },
+        { ...input, userId: context.userId },
+      )
       for await (const event of events) {
         if (event.type === 'error') {
+          if (event.error.type === 'conversation_not_found') throw errors.CONVERSATION_NOT_FOUND()
           if (event.error.type === 'message_in_progress') throw errors.MESSAGE_IN_PROGRESS()
           throw new ORPCError('INTERNAL_SERVER_ERROR', { cause: event.error })
         }

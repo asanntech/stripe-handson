@@ -22,6 +22,7 @@ export const contract = {
     // 応答はイベントイテレータでストリームする（delta を 0 回以上 → 最後に done）
     send: oc
       .errors({
+        CONVERSATION_NOT_FOUND: { status: 404, message: 'Conversation not found' },
         MESSAGE_IN_PROGRESS: {
           status: 409,
           message: 'A message with the same clientMessageId is still being generated',

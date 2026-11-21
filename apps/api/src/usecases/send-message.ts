@@ -1,3 +1,4 @@
+import type { ConversationRepository } from '@/usecases/ports/conversation-repository'
 import type { LlmClient } from '@/usecases/ports/llm-client'
 import type {
   DuplicateReplyError,
@@ -11,11 +12,13 @@ import { runDetached } from './run-detached'
 const MODEL = 'fake-model'
 const MAX_TOKENS = 1024
 
+// conversation_not_found: 会話が存在しないか、他人の会話（存在を知らせないため区別しない）
 // message_in_progress: 同じ client_message_id の送信が生成中で、返せる応答がない
 // duplicate_reply: 応答の二重保存を DB 制約が止めた（再送の排他をすり抜けたバグなので 500 にする）
 export type SendMessageError =
   | RepositoryError
   | DuplicateReplyError
+  | { type: 'conversation_not_found' }
   | { type: 'message_in_progress' }
 
 // delta を 0 回以上流したあと、done か error のどちらか 1 つで終わる（エラーは throw せず値で返す）
@@ -24,13 +27,23 @@ export type SendMessageEvent =
   | { type: 'done'; messageId: string }
   | { type: 'error'; error: SendMessageError }
 
-type Deps = { messages: MessageRepository; llm: LlmClient }
+type Deps = { conversations: ConversationRepository; messages: MessageRepository; llm: LlmClient }
 
-// 受付（送信を「生成中」で INSERT）→ LLM のストリーミング（DB Tx の外）→ 完了の保存
+// 会話の持ち主の確認 → 受付（送信を「生成中」で INSERT）→ LLM のストリーミング（DB Tx の外）→ 完了の保存
 export async function* sendMessage(
   deps: Deps,
-  input: NewUserMessage,
+  input: NewUserMessage & { userId: string },
 ): AsyncGenerator<SendMessageEvent> {
+  const owned = await deps.conversations.isOwnedBy(input)
+  if (owned.isErr()) {
+    yield { type: 'error', error: owned.error }
+    return
+  }
+  if (!owned.value) {
+    yield { type: 'error', error: { type: 'conversation_not_found' } }
+    return
+  }
+
   const accepted = await deps.messages.createUserMessage(input)
   if (accepted.isOk()) {
     yield* runDetached(generateReply(deps, accepted.value.id, input.content))

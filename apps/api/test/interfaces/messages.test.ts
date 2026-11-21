@@ -402,4 +402,68 @@ describe('メッセージ API', () => {
         .where(eq(userMessages.conversationId, bobConversation.id)),
     ).toEqual([expect.objectContaining({ content: 'bob の相談', status: 'completed' })])
   })
+
+  it('他人の会話に送信したとき 404 を返し 送信は保存されず LLM も呼ばれない', async () => {
+    const [alice] = await db.insert(users).values({ name: 'alice' }).returning()
+    const [bob] = await db.insert(users).values({ name: 'bob' }).returning()
+    if (!alice || !bob) throw new Error('準備: users の INSERT が行を返しませんでした')
+    const [aliceConversation] = await db
+      .insert(conversations)
+      .values({ userId: alice.id })
+      .returning()
+    if (!aliceConversation) throw new Error('準備: conversations の INSERT が行を返しませんでした')
+    let llmCalls = 0
+    const llm = new FakeLlmClient(() => {
+      llmCalls++
+      return { inputTokens: 5, outputTokens: 3 }
+    })
+    const app = createHonoApp(createTestRpcContext({ db, llm }))
+    const bobClient: AppClient = createORPCClient(
+      new RPCLink({
+        url: 'http://localhost/api',
+        headers: { 'x-user-id': bob.id },
+        fetch: async (request) => app.fetch(request),
+      }),
+    )
+
+    const send = async () => {
+      for await (const _ of await bobClient.messages.send({
+        conversationId: aliceConversation.id,
+        clientMessageId: crypto.randomUUID(),
+        content: 'こんにちは',
+      })) {
+        // 最初のイベントの前にエラーになるはず
+      }
+    }
+
+    // 会話の存在を他人に知らせないよう、403 ではなく 404 にする
+    await expect(send()).rejects.toMatchObject({ code: 'CONVERSATION_NOT_FOUND', status: 404 })
+    expect(await db.select().from(userMessages)).toEqual([])
+    expect(llmCalls).toBe(0)
+  })
+
+  it('存在しない会話に送信したとき 404 を返す', async () => {
+    const [alice] = await db.insert(users).values({ name: 'alice' }).returning()
+    if (!alice) throw new Error('準備: users の INSERT が行を返しませんでした')
+    const app = createHonoApp(createTestRpcContext({ db }))
+    const client: AppClient = createORPCClient(
+      new RPCLink({
+        url: 'http://localhost/api',
+        headers: { 'x-user-id': alice.id },
+        fetch: async (request) => app.fetch(request),
+      }),
+    )
+
+    const send = async () => {
+      for await (const _ of await client.messages.send({
+        conversationId: crypto.randomUUID(),
+        clientMessageId: crypto.randomUUID(),
+        content: 'こんにちは',
+      })) {
+        // 最初のイベントの前にエラーになるはず
+      }
+    }
+
+    await expect(send()).rejects.toMatchObject({ code: 'CONVERSATION_NOT_FOUND', status: 404 })
+  })
 })
