@@ -8,6 +8,34 @@
       "when": 1794702081935,
       "tag": "0000_create_users",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1794965074426,
+      "tag": "0001_create_conversations",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1794977500584,
+      "tag": "0002_create_messages",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1794977760004,
+      "tag": "0003_unique_client_message_id",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1795129454366,
+      "tag": "0004_unique_reply_per_message",
+      "breakpoints": true
     }
   ]
 }

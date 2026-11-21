@@ -1,0 +1,1 @@
+ALTER TABLE "user_messages" ADD CONSTRAINT "user_messages_conversation_id_client_message_id_unique" UNIQUE("conversation_id","client_message_id");

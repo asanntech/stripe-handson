@@ -9,7 +9,7 @@ export const PG_ERROR_CODE = {
 
 // SQLSTATE は Drizzle ではなくドライバー（pg）の DatabaseError が持つ。
 // Drizzle はそれを DrizzleQueryError の cause に包んで投げるため、包みを外してから判定する
-export const getPgErrorCode = (error: unknown): string | undefined => {
+export const getPgErrorCode = (error: unknown): string | null => {
   const pgError = error instanceof DrizzleQueryError ? error.cause : error
-  return pgError instanceof DatabaseError ? pgError.code : undefined
+  return pgError instanceof DatabaseError ? (pgError.code ?? null) : null
 }

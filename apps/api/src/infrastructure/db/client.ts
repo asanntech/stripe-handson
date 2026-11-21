@@ -7,3 +7,9 @@ export const createDb = (connection: PoolConfig) =>
   drizzle({ connection, schema, casing: 'snake_case' })
 
 export type Db = ReturnType<typeof createDb>
+
+// db.transaction() のコールバックが受け取る Tx
+export type DbTransaction = Parameters<Parameters<Db['transaction']>[0]>[0]
+
+// リポジトリはどちらでも動く（Tx を渡せば、その Tx の中でクエリを実行する）
+export type DbExecutor = Db | DbTransaction
