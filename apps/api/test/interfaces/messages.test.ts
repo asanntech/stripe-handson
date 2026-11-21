@@ -347,12 +347,18 @@ describe('メッセージ API', () => {
     if (!alice) throw new Error('準備: users の INSERT が行を返しませんでした')
     const [conversation] = await db.insert(conversations).values({ userId: alice.id }).returning()
     if (!conversation) throw new Error('準備: conversations の INSERT が行を返しませんでした')
+    const disconnected = createBarrier()
     let llmCalls = 0
-    // 切断した時点では生成が終わっていないよう、少し長い応答をゆっくり流す
-    const llm = new FakeLlmClient(() => {
-      llmCalls++
-      return { inputTokens: 5, outputTokens: 20, chunkDelayMs: 10 }
-    })
+    // 最初のチャンクを流したら、クライアントが切断するまで残りを流さない（切断した時点で必ず生成中にする）
+    const llm: LlmClient = {
+      async *stream() {
+        llmCalls++
+        yield { type: 'delta', text: 'token1 ' }
+        await disconnected.wait()
+        yield { type: 'delta', text: 'token2 ' }
+        yield { type: 'done', stopReason: 'end_turn', usage: { inputTokens: 5, outputTokens: 2 } }
+      },
+    }
     const app = createHonoApp(createTestRpcContext({ db, llm }))
     const client: AppClient = createORPCClient(
       new RPCLink({
@@ -371,6 +377,9 @@ describe('メッセージ API', () => {
       // 最初の delta を受け取ったところで切断する
       break
     }
+    // 切断したあとで生成を再開させる。サーバーからのストリームはクライアントが読んだ分だけ進むので、
+    // 生成が接続から切り離されていなければ、誰も読み進めずに「生成中」のまま止まる
+    disconnected.open()
 
     // 切断後もサーバー側で生成が続くので、完了するまで待つ
     await vi.waitFor(
@@ -381,9 +390,8 @@ describe('メッセージ API', () => {
       },
       { timeout: 5_000 },
     )
-    const fullReply = Array.from({ length: 20 }, (_, i) => `token${i + 1} `).join('')
     expect(await db.select().from(assistantMessages)).toEqual([
-      expect.objectContaining({ content: fullReply }),
+      expect.objectContaining({ content: 'token1 token2 ' }),
     ])
     expect(llmCalls).toBe(1)
   })
