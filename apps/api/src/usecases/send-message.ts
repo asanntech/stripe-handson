@@ -5,6 +5,7 @@ import type {
   NewUserMessage,
 } from '@/usecases/ports/message-repository'
 import type { RepositoryError } from '@/usecases/ports/repository-error'
+import { runDetached } from './run-detached'
 
 // 第 1 章では固定値（第 2 章で単価表のモデル、第 4 章で残高から max_tokens を算出する）
 const MODEL = 'fake-model'
@@ -32,7 +33,7 @@ export async function* sendMessage(
 ): AsyncGenerator<SendMessageEvent> {
   const accepted = await deps.messages.createUserMessage(input)
   if (accepted.isOk()) {
-    yield* generateReply(deps, accepted.value.id, input.content)
+    yield* runDetached(generateReply(deps, accepted.value.id, input.content))
     return
   }
   if (accepted.error.type === 'duplicate_client_message') {
@@ -71,7 +72,7 @@ async function* handleDuplicate(
       return
     }
     if (claimed.value) {
-      yield* generateReply(deps, existing.id, input.content)
+      yield* runDetached(generateReply(deps, existing.id, input.content))
       return
     }
     // 他の再送が先に「生成中」へ戻した
@@ -84,18 +85,26 @@ async function* generateReply(
   userMessageId: string,
   prompt: string,
 ): AsyncGenerator<SendMessageEvent> {
-  let response = ''
-  for await (const event of deps.llm.stream({ model: MODEL, prompt, maxTokens: MAX_TOKENS })) {
-    if (event.type === 'delta') {
-      response += event.text
-      yield event
+  let completed = false
+  try {
+    let response = ''
+    for await (const event of deps.llm.stream({ model: MODEL, prompt, maxTokens: MAX_TOKENS })) {
+      if (event.type === 'delta') {
+        response += event.text
+        yield event
+      }
     }
-  }
 
-  const completed = await deps.messages.complete({ userMessageId, content: response })
-  if (completed.isErr()) {
-    yield { type: 'error', error: completed.error }
-    return
+    const saved = await deps.messages.complete({ userMessageId, content: response })
+    if (saved.isErr()) {
+      yield { type: 'error', error: saved.error }
+      return
+    }
+    completed = true
+    yield { type: 'done', messageId: saved.value.id }
+  } finally {
+    // 応答を保存できずに終わったら（LLM の切断・DB エラー）、生成中のまま残さず「失敗」にして再送できるようにする
+    // 失敗にできなかった場合は、ストリームはもう終わっているので返す先がない（生成中のまま残る）
+    if (!completed) await deps.messages.markFailed(userMessageId)
   }
-  yield { type: 'done', messageId: completed.value.id }
 }

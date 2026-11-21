@@ -31,6 +31,8 @@ export interface MessageRepository {
   }): ResultAsync<SentMessage | null, RepositoryError>
   // 「失敗」の送信を「生成中」に戻す（条件付き UPDATE）。同時に呼ばれても true になるのは 1 つだけ
   claimFailedForRetry(userMessageId: string): ResultAsync<boolean, RepositoryError>
+  // 「生成中」の送信を「失敗」にする（応答を保存できずに生成が終わったとき）
+  markFailed(userMessageId: string): ResultAsync<void, RepositoryError>
   // 応答を保存し、送信を「完了」にする
   complete(reply: {
     userMessageId: string

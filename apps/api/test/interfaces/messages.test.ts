@@ -301,4 +301,50 @@ describe('メッセージ API', () => {
     expect(eventsA.at(-1)).toEqual({ type: 'done', messageId: expect.any(String) })
     expect(llmCalls).toBe(1)
   })
+
+  it('クライアントがストリームの途中で切断したとき 生成は最後まで続き 応答は「完了」として保存される', async () => {
+    const [alice] = await db.insert(users).values({ name: 'alice' }).returning()
+    if (!alice) throw new Error('準備: users の INSERT が行を返しませんでした')
+    const [conversation] = await db.insert(conversations).values({ userId: alice.id }).returning()
+    if (!conversation) throw new Error('準備: conversations の INSERT が行を返しませんでした')
+    let llmCalls = 0
+    // 切断した時点では生成が終わっていないよう、少し長い応答をゆっくり流す
+    const llm = new FakeLlmClient(() => {
+      llmCalls++
+      return { inputTokens: 5, outputTokens: 20, chunkDelayMs: 10 }
+    })
+    const app = createHonoApp(createTestRpcContext({ db, llm }))
+    const client: AppClient = createORPCClient(
+      new RPCLink({
+        url: 'http://localhost/api',
+        headers: { 'x-user-id': alice.id },
+        fetch: async (request) => app.fetch(request),
+      }),
+    )
+
+    const stream = await client.messages.send({
+      conversationId: conversation.id,
+      clientMessageId: crypto.randomUUID(),
+      content: 'こんにちは',
+    })
+    for await (const _ of stream) {
+      // 最初の delta を受け取ったところで切断する
+      break
+    }
+
+    // 切断後もサーバー側で生成が続くので、完了するまで待つ
+    await vi.waitFor(
+      async () => {
+        expect(await db.select().from(userMessages)).toEqual([
+          expect.objectContaining({ status: 'completed' }),
+        ])
+      },
+      { timeout: 5_000 },
+    )
+    const fullReply = Array.from({ length: 20 }, (_, i) => `token${i + 1} `).join('')
+    expect(await db.select().from(assistantMessages)).toEqual([
+      expect.objectContaining({ content: fullReply }),
+    ])
+    expect(llmCalls).toBe(1)
+  })
 })

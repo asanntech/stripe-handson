@@ -61,6 +61,15 @@ export const createMessageRepository = (db: DbExecutor): MessageRepository => ({
       toRepositoryError,
     ).map((rows) => rows.length === 1),
 
+  markFailed: (userMessageId) =>
+    ResultAsync.fromPromise(
+      db
+        .update(userMessages)
+        .set({ status: 'failed' })
+        .where(and(eq(userMessages.id, userMessageId), eq(userMessages.status, 'generating'))),
+      toRepositoryError,
+    ).map(() => undefined),
+
   // 応答の INSERT と送信の状態更新は同じ Tx で行う（片方だけ反映されないように）
   complete: ({ userMessageId, content }) =>
     ResultAsync.fromPromise(
