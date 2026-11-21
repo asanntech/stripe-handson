@@ -29,6 +29,7 @@ export const createMessageRepository = (db: DbExecutor): MessageRepository => ({
         .select({
           id: userMessages.id,
           status: userMessages.status,
+          content: userMessages.content,
           replyId: assistantMessages.id,
           replyContent: assistantMessages.content,
         })
@@ -43,10 +44,10 @@ export const createMessageRepository = (db: DbExecutor): MessageRepository => ({
       toRepositoryError,
     ).map(([row]) => {
       if (!row) return null
-      const { id, status, replyId, replyContent } = row
+      const { id, status, content, replyId, replyContent } = row
       const reply =
         replyId !== null && replyContent !== null ? { id: replyId, content: replyContent } : null
-      return { id, status, reply }
+      return { id, status, content, reply }
     }),
 
   // WHERE に status = 'failed' を含めるので、同時に実行されても先に行ロックを取った 1 つだけが更新できる

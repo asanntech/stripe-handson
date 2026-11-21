@@ -242,6 +242,46 @@ describe('メッセージ API', () => {
     expect(events.at(-1)).toEqual({ type: 'done', messageId: replies[0]?.id })
   })
 
+  it('失敗した送信に本文の異なる再送が来たとき 保存済みの本文で再生成する（保存したプロンプトと応答を対応させる）', async () => {
+    const [alice] = await db.insert(users).values({ name: 'alice' }).returning()
+    if (!alice) throw new Error('準備: users の INSERT が行を返しませんでした')
+    const [conversation] = await db.insert(conversations).values({ userId: alice.id }).returning()
+    if (!conversation) throw new Error('準備: conversations の INSERT が行を返しませんでした')
+    const clientMessageId = crypto.randomUUID()
+    await db.insert(userMessages).values({
+      conversationId: conversation.id,
+      clientMessageId,
+      content: 'こんにちは',
+      status: 'failed',
+    })
+    const prompts: string[] = []
+    const llm = new FakeLlmClient(({ prompt }) => {
+      prompts.push(prompt)
+      return { inputTokens: 5, outputTokens: 1 }
+    })
+    const app = createHonoApp(createTestRpcContext({ db, llm }))
+    const client: AppClient = createORPCClient(
+      new RPCLink({
+        url: 'http://localhost/api',
+        headers: { 'x-user-id': alice.id },
+        fetch: async (request) => app.fetch(request),
+      }),
+    )
+
+    for await (const _ of await client.messages.send({
+      conversationId: conversation.id,
+      clientMessageId,
+      content: '別の本文',
+    })) {
+      // 再生成を完了させる
+    }
+
+    expect(prompts).toEqual(['こんにちは'])
+    expect(await db.select().from(userMessages)).toEqual([
+      expect.objectContaining({ content: 'こんにちは', status: 'completed' }),
+    ])
+  })
+
   it('失敗した送信への再送が同時に来たとき（A の再生成中に B を送る順にバリアで固定）B は 409 になり LLM は 1 回しか呼ばれない', async () => {
     const [alice] = await db.insert(users).values({ name: 'alice' }).returning()
     if (!alice) throw new Error('準備: users の INSERT が行を返しませんでした')

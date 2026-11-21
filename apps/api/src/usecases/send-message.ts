@@ -87,7 +87,8 @@ async function* handleDuplicate(
       return
     }
     if (claimed.value) {
-      yield* runDetached(generateReply(deps, existing.id, input.content))
+      // 同じ client_message_id は同じ送信なので、保存済みの本文で再生成する（保存したプロンプトと応答を対応させる）
+      yield* runDetached(generateReply(deps, existing.id, existing.content))
       return
     }
     // 他の再送が先に「生成中」へ戻した

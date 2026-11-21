@@ -16,6 +16,8 @@ export type DuplicateReplyError = { type: 'duplicate_reply' }
 export type SentMessage = {
   id: string
   status: 'generating' | 'completed' | 'failed'
+  // 受け付けたときの本文（再生成はこの本文で行う）
+  content: string
   // 応答は完了したときだけある
   reply: { id: string; content: string } | null
 }
