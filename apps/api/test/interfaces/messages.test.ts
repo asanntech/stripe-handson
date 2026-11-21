@@ -466,4 +466,65 @@ describe('メッセージ API', () => {
 
     await expect(send()).rejects.toMatchObject({ code: 'CONVERSATION_NOT_FOUND', status: 404 })
   })
+
+  it('本文が空のとき 400 を返し 送信は保存されず LLM も呼ばれない', async () => {
+    const [alice] = await db.insert(users).values({ name: 'alice' }).returning()
+    if (!alice) throw new Error('準備: users の INSERT が行を返しませんでした')
+    const [conversation] = await db.insert(conversations).values({ userId: alice.id }).returning()
+    if (!conversation) throw new Error('準備: conversations の INSERT が行を返しませんでした')
+    let llmCalls = 0
+    const llm = new FakeLlmClient(() => {
+      llmCalls++
+      return { inputTokens: 5, outputTokens: 3 }
+    })
+    const app = createHonoApp(createTestRpcContext({ db, llm }))
+    const client: AppClient = createORPCClient(
+      new RPCLink({
+        url: 'http://localhost/api',
+        headers: { 'x-user-id': alice.id },
+        fetch: async (request) => app.fetch(request),
+      }),
+    )
+
+    const send = async () => {
+      for await (const _ of await client.messages.send({
+        conversationId: conversation.id,
+        clientMessageId: crypto.randomUUID(),
+        content: '',
+      })) {
+        // 最初のイベントの前にエラーになるはず
+      }
+    }
+
+    await expect(send()).rejects.toMatchObject({ code: 'BAD_REQUEST', status: 400 })
+    expect(await db.select().from(userMessages)).toEqual([])
+    expect(llmCalls).toBe(0)
+  })
+
+  it('client_message_id が UUID でないとき 400 を返す', async () => {
+    const [alice] = await db.insert(users).values({ name: 'alice' }).returning()
+    if (!alice) throw new Error('準備: users の INSERT が行を返しませんでした')
+    const [conversation] = await db.insert(conversations).values({ userId: alice.id }).returning()
+    if (!conversation) throw new Error('準備: conversations の INSERT が行を返しませんでした')
+    const app = createHonoApp(createTestRpcContext({ db }))
+    const client: AppClient = createORPCClient(
+      new RPCLink({
+        url: 'http://localhost/api',
+        headers: { 'x-user-id': alice.id },
+        fetch: async (request) => app.fetch(request),
+      }),
+    )
+
+    const send = async () => {
+      for await (const _ of await client.messages.send({
+        conversationId: conversation.id,
+        clientMessageId: 'not-a-uuid',
+        content: 'こんにちは',
+      })) {
+        // 最初のイベントの前にエラーになるはず
+      }
+    }
+
+    await expect(send()).rejects.toMatchObject({ code: 'BAD_REQUEST', status: 400 })
+  })
 })

@@ -32,7 +32,7 @@ export const contract = {
         z.object({
           conversationId: z.uuid(),
           clientMessageId: z.uuid(),
-          content: z.string(),
+          content: z.string().min(1),
         }),
       )
       .output(
