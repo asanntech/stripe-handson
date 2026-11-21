@@ -68,8 +68,10 @@ export const createMessageRepository = (db: DbExecutor): MessageRepository => ({
         const [row] = await tx
           .insert(assistantMessages)
           .values({ userMessageId, content })
+          .onConflictDoNothing({ target: assistantMessages.userMessageId })
           .returning({ id: assistantMessages.id })
-        if (!row) throw new Error('assistant_messages の INSERT が行を返しませんでした')
+        // 衝突したら何も書いていないので、そのまま抜けてよい（送信の状態も変えない）
+        if (!row) return null
         await tx
           .update(userMessages)
           .set({ status: 'completed' })
@@ -77,5 +79,5 @@ export const createMessageRepository = (db: DbExecutor): MessageRepository => ({
         return row
       }),
       toRepositoryError,
-    ),
+    ).andThen((row) => (row ? okAsync(row) : errAsync({ type: 'duplicate_reply' as const }))),
 })

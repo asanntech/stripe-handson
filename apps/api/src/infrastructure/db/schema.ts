@@ -43,11 +43,16 @@ export const userMessages = pgTable(
 )
 
 // LLM の応答。送信 1 回につき 1 行（応答が完了したときだけ作られる）
-export const assistantMessages = pgTable('assistant_messages', {
-  id: uuid().primaryKey().defaultRandom(),
-  userMessageId: uuid()
-    .notNull()
-    .references(() => userMessages.id),
-  content: text().notNull(),
-  createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
-})
+export const assistantMessages = pgTable(
+  'assistant_messages',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    userMessageId: uuid()
+      .notNull()
+      .references(() => userMessages.id),
+    content: text().notNull(),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  // 送信 1 回に応答は 1 つだけ（アプリの排他をすり抜けた二重保存を止める最後の砦）
+  (t) => [unique('assistant_messages_user_message_id_unique').on(t.userMessageId)],
+)

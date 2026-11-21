@@ -1,0 +1,1 @@
+ALTER TABLE "assistant_messages" ADD CONSTRAINT "assistant_messages_user_message_id_unique" UNIQUE("user_message_id");

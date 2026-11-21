@@ -1,5 +1,9 @@
 import type { LlmClient } from '@/usecases/ports/llm-client'
-import type { MessageRepository, NewUserMessage } from '@/usecases/ports/message-repository'
+import type {
+  DuplicateReplyError,
+  MessageRepository,
+  NewUserMessage,
+} from '@/usecases/ports/message-repository'
 import type { RepositoryError } from '@/usecases/ports/repository-error'
 
 // 第 1 章では固定値（第 2 章で単価表のモデル、第 4 章で残高から max_tokens を算出する）
@@ -7,7 +11,11 @@ const MODEL = 'fake-model'
 const MAX_TOKENS = 1024
 
 // message_in_progress: 同じ client_message_id の送信が生成中で、返せる応答がない
-export type SendMessageError = RepositoryError | { type: 'message_in_progress' }
+// duplicate_reply: 応答の二重保存を DB 制約が止めた（再送の排他をすり抜けたバグなので 500 にする）
+export type SendMessageError =
+  | RepositoryError
+  | DuplicateReplyError
+  | { type: 'message_in_progress' }
 
 // delta を 0 回以上流したあと、done か error のどちらか 1 つで終わる（エラーは throw せず値で返す）
 export type SendMessageEvent =

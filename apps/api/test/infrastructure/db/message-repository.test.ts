@@ -3,7 +3,7 @@ import { afterAll, beforeEach, describe, expect, it } from 'vitest'
 import { requireEnv } from '@/config'
 import { createDb } from '@/infrastructure/db/client'
 import { createMessageRepository } from '@/infrastructure/db/message-repository'
-import { conversations, userMessages, users } from '@/infrastructure/db/schema'
+import { assistantMessages, conversations, userMessages, users } from '@/infrastructure/db/schema'
 import { createBarrier } from '../../helpers/barrier'
 import { truncateAllTables } from '../../helpers/database'
 import { waitUntilWaitingForLock } from '../../helpers/lock'
@@ -109,5 +109,39 @@ describe('MessageRepository: 受付 INSERT の競合', () => {
 
     const saved = await db.select().from(userMessages)
     expect(saved).toEqual([expect.objectContaining({ id: resultB._unsafeUnwrap().id })])
+  })
+})
+
+describe('MessageRepository: 応答の保存', () => {
+  const db = createDb({ connectionString: requireEnv('TEST_DATABASE_URL') })
+
+  beforeEach(async () => {
+    await truncateAllTables(db)
+  })
+
+  afterAll(async () => {
+    await db.$client.end()
+  })
+
+  it('同じ送信に応答を 2 回保存しようとしたとき 2 回目は拒否され 応答は 1 つのまま', async () => {
+    const [alice] = await db.insert(users).values({ name: 'alice' }).returning()
+    if (!alice) throw new Error('準備: users の INSERT が行を返しませんでした')
+    const [conversation] = await db.insert(conversations).values({ userId: alice.id }).returning()
+    if (!conversation) throw new Error('準備: conversations の INSERT が行を返しませんでした')
+    const repository = createMessageRepository(db)
+    const accepted = await repository.createUserMessage({
+      conversationId: conversation.id,
+      clientMessageId: crypto.randomUUID(),
+      content: 'こんにちは',
+    })
+    const userMessageId = accepted._unsafeUnwrap().id
+    const first = await repository.complete({ userMessageId, content: '1 回目の応答' })
+
+    const second = await repository.complete({ userMessageId, content: '2 回目の応答' })
+
+    expect(second._unsafeUnwrapErr()).toEqual({ type: 'duplicate_reply' })
+    expect(await db.select().from(assistantMessages)).toEqual([
+      expect.objectContaining({ id: first._unsafeUnwrap().id, content: '1 回目の応答' }),
+    ])
   })
 })

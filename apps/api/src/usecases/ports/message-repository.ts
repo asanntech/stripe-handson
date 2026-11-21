@@ -10,6 +10,9 @@ export type NewUserMessage = {
 // 同じ会話・同じ client_message_id の送信がすでにある（UNIQUE (conversation_id, client_message_id)）
 export type DuplicateClientMessageError = { type: 'duplicate_client_message' }
 
+// 同じ送信の応答がすでに保存されている（UNIQUE (user_message_id)）
+export type DuplicateReplyError = { type: 'duplicate_reply' }
+
 export type SentMessage = {
   id: string
   status: 'generating' | 'completed' | 'failed'
@@ -32,5 +35,5 @@ export interface MessageRepository {
   complete(reply: {
     userMessageId: string
     content: string
-  }): ResultAsync<{ id: string }, RepositoryError>
+  }): ResultAsync<{ id: string }, RepositoryError | DuplicateReplyError>
 }
