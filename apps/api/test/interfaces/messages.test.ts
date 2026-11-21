@@ -570,4 +570,88 @@ describe('メッセージ API', () => {
     ])
     expect(await db.select().from(assistantMessages)).toEqual([])
   })
+
+  it('ストリーミング中に 5xx のエラーが起きたとき procedure 名付きで原因をサーバー側のログに出す', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const [alice] = await db.insert(users).values({ name: 'alice' }).returning()
+    if (!alice) throw new Error('準備: users の INSERT が行を返しませんでした')
+    const [conversation] = await db.insert(conversations).values({ userId: alice.id }).returning()
+    if (!conversation) throw new Error('準備: conversations の INSERT が行を返しませんでした')
+    // 2 チャンク流したあとに LLM 側が切断する（ストリームを返したあとで 502 になる）
+    const llm = new FakeLlmClient(() => ({
+      inputTokens: 5,
+      outputTokens: 5,
+      disconnectAfterChunks: 2,
+    }))
+    const app = createHonoApp(createTestRpcContext({ db, llm }))
+    const client: AppClient = createORPCClient(
+      new RPCLink({
+        url: 'http://localhost/api',
+        headers: { 'x-user-id': alice.id },
+        fetch: async (request) => app.fetch(request),
+      }),
+    )
+
+    await expect(
+      (async () => {
+        for await (const _ of await client.messages.send({
+          conversationId: conversation.id,
+          clientMessageId: crypto.randomUUID(),
+          content: 'こんにちは',
+        })) {
+          // チャンクを読み進める
+        }
+      })(),
+    ).rejects.toMatchObject({ code: 'LLM_UNAVAILABLE' })
+
+    expect(consoleError).toHaveBeenCalledWith(
+      '[messages.send]',
+      expect.objectContaining({
+        code: 'LLM_UNAVAILABLE',
+        cause: expect.objectContaining({ type: 'llm_unavailable' }),
+      }),
+    )
+  })
+
+  it('ストリーミング中に想定外の例外が起きたとき 500 を返し procedure 名付きでその例外をサーバー側のログに出す', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const [alice] = await db.insert(users).values({ name: 'alice' }).returning()
+    if (!alice) throw new Error('準備: users の INSERT が行を返しませんでした')
+    const [conversation] = await db.insert(conversations).values({ userId: alice.id }).returning()
+    if (!conversation) throw new Error('準備: conversations の INSERT が行を返しませんでした')
+    const bug = new Error('想定外のバグ')
+    // 1 チャンク流したあとに例外を投げる LLM（ポートの約束に反する＝バグ）
+    const llm: LlmClient = {
+      async *stream() {
+        yield { type: 'delta', text: 'token1 ' }
+        throw bug
+      },
+    }
+    const app = createHonoApp(createTestRpcContext({ db, llm }))
+    const client: AppClient = createORPCClient(
+      new RPCLink({
+        url: 'http://localhost/api',
+        headers: { 'x-user-id': alice.id },
+        fetch: async (request) => app.fetch(request),
+      }),
+    )
+
+    await expect(
+      (async () => {
+        for await (const _ of await client.messages.send({
+          conversationId: conversation.id,
+          clientMessageId: crypto.randomUUID(),
+          content: 'こんにちは',
+        })) {
+          // チャンクを読み進める
+        }
+      })(),
+    ).rejects.toMatchObject({ code: 'INTERNAL_SERVER_ERROR', status: 500 })
+
+    expect(consoleError).toHaveBeenCalledWith('[messages.send]', bug)
+    // 想定外の例外で抜けても、送信は生成中のまま残らない
+    expect(await db.select().from(userMessages)).toEqual([
+      expect.objectContaining({ status: 'failed' }),
+    ])
+  })
 })

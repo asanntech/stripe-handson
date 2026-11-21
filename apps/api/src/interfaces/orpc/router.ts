@@ -8,7 +8,7 @@ export const router = orpc.router({
     check: orpc.health.check.handler(async ({ context, errors }) => {
       const result = await context.checkDatabase()
       // ドメイン / インフラのエラーは、ここで contract に定義した型付きエラーへ変換する
-      // 原因は cause に持たせるだけ。ログは hono/app.ts の onError インターセプターが出す（クライアントには返らない）
+      // 原因は cause に持たせるだけ。ログは logServerErrorInterceptor（orpc/log-server-error.ts）が出す（クライアントには返らない）
       if (result.isErr()) throw errors.SERVICE_UNAVAILABLE({ cause: result.error })
       return { status: 'ok', database: 'ok' }
     }),

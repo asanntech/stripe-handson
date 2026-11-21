@@ -67,8 +67,9 @@ describe('ヘルスチェック API', () => {
       await unreachableDb.$client.end()
     }
 
-    // ログは onError インターセプター 1 か所で、原因（cause）付きの ORPCError として出る
+    // ログはインターセプター（logServerErrorInterceptor）1 か所で、procedure 名と原因（cause）付きの ORPCError として出る
     expect(consoleError).toHaveBeenCalledWith(
+      '[health.check]',
       expect.objectContaining({
         code: 'SERVICE_UNAVAILABLE',
         cause: expect.objectContaining({ type: 'database_unavailable', cause: expect.anything() }),
@@ -93,7 +94,7 @@ describe('ヘルスチェック API', () => {
       code: 'INTERNAL_SERVER_ERROR',
       status: 500,
     })
-    expect(consoleError).toHaveBeenCalledWith(bug)
+    expect(consoleError).toHaveBeenCalledWith('[health.check]', bug)
   })
 
   it('リクエストが壊れていて 4xx を返すとき サーバー側のログには出さない', async () => {
