@@ -21,13 +21,14 @@ pnpm typecheck    # tsc --noEmit
 
 | ディレクトリ | 役割 |
 |---|---|
-| `domain/` | 業務ルール（純粋な計算）。他の層・ライブラリに依存しない |
+| `domain/` | 業務ルール（純粋な計算）。他の層と、I/O・副作用・フレームワークに依存するライブラリに依存しない |
 | `usecases/` | ユースケース。Tx 境界を持つ。外部依存は `usecases/ports/` のインターフェース経由 |
 | `infrastructure/` | ポートの実装（Drizzle・Stripe・Fake LLM など） |
 | `interfaces/` | 入口。oRPC の procedure（`interfaces/orpc/`）、Hono のアプリと素のルート（`interfaces/hono/`） |
 | `main.ts` | コンポジションルート（依存の組み立てのみ） |
 
 - 依存は外側 → 内側のみ（interfaces / infrastructure → usecases → domain）
+- domain 層で使ってよいライブラリは純粋なものの許可リストだけ: `neverthrow`、`ts-pattern`。リストに足すときはユーザーに相談する（Drizzle・pg・Stripe・Hono・oRPC などは不可）
 - ライブラリのセットアップは、それを使う層の中の `setup.ts` に置く（トップレベルの `libs/` は作らない）
 - API の仕様（input / output）は `packages/contract` に定義し、サーバーは `implement(contract)` で実装する
 - DB アクセスはアプリもテストも `createDb()`（Drizzle）に統一する。プールが必要なときは `db.$client`
