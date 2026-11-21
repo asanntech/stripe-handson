@@ -1,4 +1,5 @@
 import { ORPCError } from '@orpc/server'
+import { match, P } from 'ts-pattern'
 import { sendMessage } from '@/usecases/send-message'
 import { authedOrpc, orpc } from './setup'
 
@@ -30,21 +31,17 @@ export const router = orpc.router({
           yield event
           continue
         }
-        // ユースケースのエラーを全種類列挙する（新しいエラーを足して変換し忘れると typecheck で止まる）
-        const error = event.error
-        switch (error.type) {
-          case 'conversation_not_found':
-            throw errors.CONVERSATION_NOT_FOUND()
-          case 'message_in_progress':
-            throw errors.MESSAGE_IN_PROGRESS()
-          case 'llm_unavailable':
-            throw errors.LLM_UNAVAILABLE({ cause: error })
-          case 'database_error':
-          case 'duplicate_reply':
-            throw new ORPCError('INTERNAL_SERVER_ERROR', { cause: error })
-          default:
-            throw error satisfies never
-        }
+        // ユースケースのエラーを contract のエラーへ変換する表。全種類を列挙し、
+        // 新しいエラーを足して変換し忘れると .exhaustive() が typecheck で止める
+        throw match(event.error)
+          .with({ type: 'conversation_not_found' }, () => errors.CONVERSATION_NOT_FOUND())
+          .with({ type: 'message_in_progress' }, () => errors.MESSAGE_IN_PROGRESS())
+          .with({ type: 'llm_unavailable' }, (error) => errors.LLM_UNAVAILABLE({ cause: error }))
+          .with(
+            { type: P.union('database_error', 'duplicate_reply') },
+            (error) => new ORPCError('INTERNAL_SERVER_ERROR', { cause: error }),
+          )
+          .exhaustive()
       }
     }),
   },
