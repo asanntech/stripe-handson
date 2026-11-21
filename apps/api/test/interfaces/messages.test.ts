@@ -347,4 +347,59 @@ describe('メッセージ API', () => {
     ])
     expect(llmCalls).toBe(1)
   })
+
+  it('他人の会話で完了済みの client_message_id で送信したとき その応答は返らず 新しい送信として生成する', async () => {
+    const [alice] = await db.insert(users).values({ name: 'alice' }).returning()
+    const [bob] = await db.insert(users).values({ name: 'bob' }).returning()
+    if (!alice || !bob) throw new Error('準備: users の INSERT が行を返しませんでした')
+    const [aliceConversation] = await db
+      .insert(conversations)
+      .values({ userId: alice.id })
+      .returning()
+    const [bobConversation] = await db.insert(conversations).values({ userId: bob.id }).returning()
+    if (!aliceConversation || !bobConversation) {
+      throw new Error('準備: conversations の INSERT が行を返しませんでした')
+    }
+    let llmCalls = 0
+    const llm = new FakeLlmClient(({ prompt }) => {
+      llmCalls++
+      // プロンプトごとに応答の長さを変え、誰の応答が返ったかを区別できるようにする
+      return { inputTokens: 5, outputTokens: prompt === 'alice の相談' ? 3 : 1 }
+    })
+    const app = createHonoApp(createTestRpcContext({ db, llm }))
+    const clientFor = (userId: string): AppClient =>
+      createORPCClient(
+        new RPCLink({
+          url: 'http://localhost/api',
+          headers: { 'x-user-id': userId },
+          fetch: async (request) => app.fetch(request),
+        }),
+      )
+    // Alice と Bob が（クライアントのバグなどで）同じ client_message_id を使う
+    const sharedClientMessageId = crypto.randomUUID()
+    for await (const _ of await clientFor(alice.id).messages.send({
+      conversationId: aliceConversation.id,
+      clientMessageId: sharedClientMessageId,
+      content: 'alice の相談',
+    })) {
+      // Alice の送信を完了させる
+    }
+
+    const bobEvents = []
+    for await (const event of await clientFor(bob.id).messages.send({
+      conversationId: bobConversation.id,
+      clientMessageId: sharedClientMessageId,
+      content: 'bob の相談',
+    }))
+      bobEvents.push(event)
+
+    expect(bobEvents.slice(0, -1)).toEqual([{ type: 'delta', text: 'token1 ' }])
+    expect(llmCalls).toBe(2)
+    expect(
+      await db
+        .select()
+        .from(userMessages)
+        .where(eq(userMessages.conversationId, bobConversation.id)),
+    ).toEqual([expect.objectContaining({ content: 'bob の相談', status: 'completed' })])
+  })
 })
