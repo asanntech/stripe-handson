@@ -527,4 +527,47 @@ describe('メッセージ API', () => {
 
     await expect(send()).rejects.toMatchObject({ code: 'BAD_REQUEST', status: 400 })
   })
+
+  it('LLM がストリームの途中で切断したとき 届いたチャンクのあとに 502 のエラーを返し 送信は「失敗」として保存される', async () => {
+    const [alice] = await db.insert(users).values({ name: 'alice' }).returning()
+    if (!alice) throw new Error('準備: users の INSERT が行を返しませんでした')
+    const [conversation] = await db.insert(conversations).values({ userId: alice.id }).returning()
+    if (!conversation) throw new Error('準備: conversations の INSERT が行を返しませんでした')
+    const llm = new FakeLlmClient(() => ({
+      inputTokens: 5,
+      outputTokens: 5,
+      disconnectAfterChunks: 2,
+    }))
+    const app = createHonoApp(createTestRpcContext({ db, llm }))
+    const client: AppClient = createORPCClient(
+      new RPCLink({
+        url: 'http://localhost/api',
+        headers: { 'x-user-id': alice.id },
+        fetch: async (request) => app.fetch(request),
+      }),
+    )
+
+    const events = []
+    let error: unknown = null
+    try {
+      for await (const event of await client.messages.send({
+        conversationId: conversation.id,
+        clientMessageId: crypto.randomUUID(),
+        content: 'こんにちは',
+      }))
+        events.push(event)
+    } catch (caught) {
+      error = caught
+    }
+
+    expect(events).toEqual([
+      { type: 'delta', text: 'token1 ' },
+      { type: 'delta', text: 'token2 ' },
+    ])
+    expect(error).toMatchObject({ code: 'LLM_UNAVAILABLE', status: 502 })
+    expect(await db.select().from(userMessages)).toEqual([
+      expect.objectContaining({ status: 'failed' }),
+    ])
+    expect(await db.select().from(assistantMessages)).toEqual([])
+  })
 })

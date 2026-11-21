@@ -1,5 +1,5 @@
 import type { ConversationRepository } from '@/usecases/ports/conversation-repository'
-import type { LlmClient } from '@/usecases/ports/llm-client'
+import type { LlmClient, LlmError } from '@/usecases/ports/llm-client'
 import type {
   DuplicateReplyError,
   MessageRepository,
@@ -13,12 +13,14 @@ const MODEL = 'fake-model'
 const MAX_TOKENS = 1024
 
 // conversation_not_found: 会話が存在しないか、他人の会話（存在を知らせないため区別しない）
+// llm_unavailable: LLM のストリームが途中で切れ、応答も usage も得られなかった
 // message_in_progress: 同じ client_message_id の送信が生成中で、返せる応答がない
 // duplicate_reply: 応答の二重保存を DB 制約が止めた（再送の排他をすり抜けたバグなので 500 にする）
 export type SendMessageError =
   | RepositoryError
   | DuplicateReplyError
   | { type: 'conversation_not_found' }
+  | { type: 'llm_unavailable'; cause: LlmError }
   | { type: 'message_in_progress' }
 
 // delta を 0 回以上流したあと、done か error のどちらか 1 つで終わる（エラーは throw せず値で返す）
@@ -98,7 +100,17 @@ async function* generateReply(
   userMessageId: string,
   prompt: string,
 ): AsyncGenerator<SendMessageEvent> {
-  let completed = false
+  // 送信の最終状態（完了 / 失敗）を保存したか
+  let settled = false
+  // 応答を保存できずに終わるとき、「失敗」を保存してからエラーを返す。
+  // 先にエラーを返すと、クライアントがすぐ再送したときにまだ「生成中」で 409 になってしまう。
+  // 失敗にできなかった場合は生成中のまま残る（スコープ外の「生成中のまま残った送信の回収」と同じ扱い）
+  const fail = async (error: SendMessageError): Promise<SendMessageEvent> => {
+    await deps.messages.markFailed(userMessageId)
+    settled = true
+    return { type: 'error', error }
+  }
+
   try {
     let response = ''
     for await (const event of deps.llm.stream({ model: MODEL, prompt, maxTokens: MAX_TOKENS })) {
@@ -106,18 +118,22 @@ async function* generateReply(
         response += event.text
         yield event
       }
+      if (event.type === 'error') {
+        // 途中までの応答は保存しない（同じ ID で再送すれば再生成できる）
+        yield await fail({ type: 'llm_unavailable', cause: event.error })
+        return
+      }
     }
 
     const saved = await deps.messages.complete({ userMessageId, content: response })
     if (saved.isErr()) {
-      yield { type: 'error', error: saved.error }
+      yield await fail(saved.error)
       return
     }
-    completed = true
+    settled = true
     yield { type: 'done', messageId: saved.value.id }
   } finally {
-    // 応答を保存できずに終わったら（LLM の切断・DB エラー）、生成中のまま残さず「失敗」にして再送できるようにする
-    // 失敗にできなかった場合は、ストリームはもう終わっているので返す先がない（生成中のまま残る）
-    if (!completed) await deps.messages.markFailed(userMessageId)
+    // 想定外の例外で抜けたときも、生成中のまま残さない
+    if (!settled) await deps.messages.markFailed(userMessageId)
   }
 }
