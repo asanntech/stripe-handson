@@ -342,7 +342,7 @@ describe('メッセージ API', () => {
     expect(llmCalls).toBe(1)
   })
 
-  it('クライアントがストリームの途中で切断したとき 生成は最後まで続き 応答は「完了」として保存される', async () => {
+  it('クライアントがストリームの途中で切断したとき 生成は最後まで続き 応答は「完了」として保存される（再送は生成中なら 409、完了後は保存済みの応答）', async () => {
     const [alice] = await db.insert(users).values({ name: 'alice' }).returning()
     if (!alice) throw new Error('準備: users の INSERT が行を返しませんでした')
     const [conversation] = await db.insert(conversations).values({ userId: alice.id }).returning()
@@ -368,15 +368,27 @@ describe('メッセージ API', () => {
       }),
     )
 
-    const stream = await client.messages.send({
+    const input = {
       conversationId: conversation.id,
       clientMessageId: crypto.randomUUID(),
       content: 'こんにちは',
-    })
+    }
+
+    const stream = await client.messages.send(input)
     for await (const _ of stream) {
       // 最初の delta を受け取ったところで切断する
       break
     }
+    // 切断後、まだ生成中のうちに同じ ID で再送すると 409 になる
+    const resendWhileGenerating = async () => {
+      for await (const _ of await client.messages.send(input)) {
+        // 最初のイベントの前にエラーになるはず
+      }
+    }
+    await expect(resendWhileGenerating()).rejects.toMatchObject({
+      code: 'MESSAGE_IN_PROGRESS',
+      status: 409,
+    })
     // 切断したあとで生成を再開させる。サーバーからのストリームはクライアントが読んだ分だけ進むので、
     // 生成が接続から切り離されていなければ、誰も読み進めずに「生成中」のまま止まる
     disconnected.open()
@@ -390,8 +402,15 @@ describe('メッセージ API', () => {
       },
       { timeout: 5_000 },
     )
-    expect(await db.select().from(assistantMessages)).toEqual([
-      expect.objectContaining({ content: 'token1 token2 ' }),
+    const replies = await db.select().from(assistantMessages)
+    expect(replies).toEqual([expect.objectContaining({ content: 'token1 token2 ' })])
+
+    // 完了後に同じ ID で再送すると、LLM を呼ばずに保存済みの応答全文が返る
+    const replayed = []
+    for await (const event of await client.messages.send(input)) replayed.push(event)
+    expect(replayed).toEqual([
+      { type: 'delta', text: 'token1 token2 ' },
+      { type: 'done', messageId: replies[0]?.id },
     ])
     expect(llmCalls).toBe(1)
   })
