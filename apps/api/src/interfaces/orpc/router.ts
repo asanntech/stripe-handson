@@ -1,6 +1,6 @@
 import { ORPCError } from '@orpc/server'
 import { sendMessage } from '@/usecases/send-message'
-import { orpc } from './setup'
+import { authedOrpc, orpc } from './setup'
 
 export const router = orpc.router({
   health: {
@@ -13,14 +13,14 @@ export const router = orpc.router({
     }),
   },
   conversations: {
-    create: orpc.conversations.create.handler(async ({ context }) => {
-      const result = await context.conversations.create(context.userId ?? '')
+    create: authedOrpc.conversations.create.handler(async ({ context }) => {
+      const result = await context.conversations.create(context.userId)
       if (result.isErr()) throw new ORPCError('INTERNAL_SERVER_ERROR', { cause: result.error })
       return { conversationId: result.value.id }
     }),
   },
   messages: {
-    send: orpc.messages.send.handler(async function* ({ input, context, errors }) {
+    send: authedOrpc.messages.send.handler(async function* ({ input, context, errors }) {
       const events = sendMessage({ messages: context.messages, llm: context.llm }, input)
       for await (const event of events) {
         if (event.type === 'error') {
