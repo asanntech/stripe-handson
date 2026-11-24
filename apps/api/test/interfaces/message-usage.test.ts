@@ -126,4 +126,54 @@ describe('メッセージ送信の利用履歴', () => {
       expect.objectContaining({ modelPriceId: current.id, credits: 6 }),
     ])
   })
+
+  it('LLM の切断で失敗した送信を同じ client_message_id で再送して再生成したとき 利用履歴は再生成の 1 件だけ記録される', async () => {
+    const [alice] = await db.insert(users).values({ name: 'alice' }).returning()
+    if (!alice) throw new Error('準備: users の INSERT が行を返しませんでした')
+    const [conversation] = await db.insert(conversations).values({ userId: alice.id }).returning()
+    if (!conversation) throw new Error('準備: conversations の INSERT が行を返しませんでした')
+    const [model] = await db.insert(models).values({ name: MODEL }).returning()
+    if (!model) throw new Error('準備: models の INSERT が行を返しませんでした')
+    await db.insert(modelPrices).values({
+      modelId: model.id,
+      inputPerMillionTokens: 3_000,
+      outputPerMillionTokens: 15_000,
+      effectiveFrom: new Date('2026-01-01T00:00:00Z'),
+    })
+    // 1 回目は途中で切断し、2 回目（再生成）は最後まで返す
+    let llmCalls = 0
+    const llm = new FakeLlmClient(() => {
+      llmCalls++
+      return llmCalls === 1
+        ? { inputTokens: 1_000, outputTokens: 200, disconnectAfterChunks: 1 }
+        : { inputTokens: 2_000, outputTokens: 400 }
+    })
+    const app = createHonoApp(createTestRpcContext({ db, llm }))
+    const client: AppClient = createORPCClient(
+      new RPCLink({
+        url: 'http://localhost/api',
+        headers: { 'x-user-id': alice.id },
+        fetch: async (request) => app.fetch(request),
+      }),
+    )
+    const input = {
+      conversationId: conversation.id,
+      clientMessageId: crypto.randomUUID(),
+      content: 'こんにちは',
+    }
+    await expect(async () => {
+      for await (const _ of await client.messages.send(input)) {
+        // 切断（502）まで読む
+      }
+    }).rejects.toMatchObject({ code: 'LLM_UNAVAILABLE' })
+
+    for await (const _ of await client.messages.send(input)) {
+      // 完了まで読み切る
+    }
+
+    // 再生成の usage で 6 + 6 = 12
+    expect(await db.select().from(usageRecords)).toEqual([
+      expect.objectContaining({ inputTokens: 2_000, outputTokens: 400, credits: 12 }),
+    ])
+  })
 })
