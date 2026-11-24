@@ -1,0 +1,1 @@
+ALTER TABLE "usage_records" ADD CONSTRAINT "usage_records_user_message_id_unique" UNIQUE("user_message_id");

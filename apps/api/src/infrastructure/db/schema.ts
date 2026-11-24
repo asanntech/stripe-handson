@@ -82,16 +82,21 @@ export const modelPrices = pgTable(
 )
 
 // 利用履歴。適用した単価は model_prices の行を参照する（単価表は追記のみなので、参照先の単価は変わらない）
-export const usageRecords = pgTable('usage_records', {
-  id: uuid().primaryKey().defaultRandom(),
-  userMessageId: uuid()
-    .notNull()
-    .references(() => userMessages.id),
-  modelPriceId: uuid()
-    .notNull()
-    .references(() => modelPrices.id),
-  inputTokens: integer().notNull(),
-  outputTokens: integer().notNull(),
-  credits: integer().notNull(),
-  createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
-})
+export const usageRecords = pgTable(
+  'usage_records',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    userMessageId: uuid()
+      .notNull()
+      .references(() => userMessages.id),
+    modelPriceId: uuid()
+      .notNull()
+      .references(() => modelPrices.id),
+    inputTokens: integer().notNull(),
+    outputTokens: integer().notNull(),
+    credits: integer().notNull(),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  // 送信 1 回につき利用記録は 1 つだけ（二重課金を止める最後の砦）
+  (t) => [unique('usage_records_user_message_id_unique').on(t.userMessageId)],
+)
