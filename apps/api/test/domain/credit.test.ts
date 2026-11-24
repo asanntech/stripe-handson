@@ -42,4 +42,13 @@ describe('クレジット換算', () => {
 
     expect(credits).toBe(1)
   })
+
+  it('トークンが 0 のとき 0 クレジットに換算する', () => {
+    const credits = calculateCredits(
+      { inputTokens: 0, outputTokens: 0 },
+      { inputPerMillionTokens: 3_000, outputPerMillionTokens: 15_000 },
+    )
+
+    expect(credits).toBe(0)
+  })
 })
