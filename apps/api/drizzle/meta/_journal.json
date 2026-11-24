@@ -43,6 +43,13 @@
       "when": 1795508434456,
       "tag": "0005_create_models_and_model_prices",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1795509454298,
+      "tag": "0006_create_usage_records",
+      "breakpoints": true
     }
   ]
 }

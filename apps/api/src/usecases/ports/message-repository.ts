@@ -22,6 +22,14 @@ export type SentMessage = {
   reply: { id: string; content: string } | null
 }
 
+// 応答 1 つ分の利用記録（適用した単価は単価表の行 ID で参照する）
+export type NewUsageRecord = {
+  modelPriceId: string
+  inputTokens: number
+  outputTokens: number
+  credits: number
+}
+
 export interface MessageRepository {
   // 送信を「生成中」として受け付ける
   createUserMessage(
@@ -35,9 +43,11 @@ export interface MessageRepository {
   claimFailedForRetry(userMessageId: string): ResultAsync<boolean, RepositoryError>
   // 「生成中」の送信を「失敗」にする（応答を保存できずに生成が終わったとき）
   markFailed(userMessageId: string): ResultAsync<void, RepositoryError>
-  // 応答を保存し、送信を「完了」にする
+  // 応答と利用記録を保存し、送信を「完了」にする
+  // usage は送信フローが利用記録を渡すようになるまでの間だけ省略可能
   complete(reply: {
     userMessageId: string
     content: string
+    usage?: NewUsageRecord
   }): ResultAsync<{ id: string }, RepositoryError | DuplicateReplyError>
 }

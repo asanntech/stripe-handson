@@ -80,3 +80,18 @@ export const modelPrices = pgTable(
   },
   (t) => [unique('model_prices_model_id_effective_from_unique').on(t.modelId, t.effectiveFrom)],
 )
+
+// 利用履歴。適用した単価は model_prices の行を参照する（単価表は追記のみなので、参照先の単価は変わらない）
+export const usageRecords = pgTable('usage_records', {
+  id: uuid().primaryKey().defaultRandom(),
+  userMessageId: uuid()
+    .notNull()
+    .references(() => userMessages.id),
+  modelPriceId: uuid()
+    .notNull()
+    .references(() => modelPrices.id),
+  inputTokens: integer().notNull(),
+  outputTokens: integer().notNull(),
+  credits: integer().notNull(),
+  createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+})

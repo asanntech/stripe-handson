@@ -3,7 +3,7 @@ import { errAsync, okAsync, ResultAsync } from 'neverthrow'
 import type { MessageRepository } from '@/usecases/ports/message-repository'
 import type { RepositoryError } from '@/usecases/ports/repository-error'
 import type { DbExecutor } from './client'
-import { assistantMessages, userMessages } from './schema'
+import { assistantMessages, usageRecords, userMessages } from './schema'
 
 const toRepositoryError = (cause: unknown): RepositoryError => ({ type: 'database_error', cause })
 
@@ -71,8 +71,8 @@ export const createMessageRepository = (db: DbExecutor): MessageRepository => ({
       toRepositoryError,
     ).map(() => undefined),
 
-  // 応答の INSERT と送信の状態更新は同じ Tx で行う（片方だけ反映されないように）
-  complete: ({ userMessageId, content }) =>
+  // 応答・利用記録の INSERT と送信の状態更新は同じ Tx で行う（一部だけ反映されないように）
+  complete: ({ userMessageId, content, usage }) =>
     ResultAsync.fromPromise(
       db.transaction(async (tx) => {
         const [row] = await tx
@@ -82,6 +82,7 @@ export const createMessageRepository = (db: DbExecutor): MessageRepository => ({
           .returning({ id: assistantMessages.id })
         // 衝突したら何も書いていないので、そのまま抜けてよい（送信の状態も変えない）
         if (!row) return null
+        if (usage !== undefined) await tx.insert(usageRecords).values({ userMessageId, ...usage })
         await tx
           .update(userMessages)
           .set({ status: 'completed' })
