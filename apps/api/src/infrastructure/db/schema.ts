@@ -65,6 +65,7 @@ export const models = pgTable('models', {
 })
 
 // 単価表（履歴）。改定は既存行を UPDATE せず、新しい適用開始日時の行を追加する。
+// UPDATE / DELETE はトリガーで拒否する（drizzle/0008_model_prices_append_only.sql。Drizzle のスキーマでは表せない）。
 // 単価は 100 万トークンあたりのクレジット（整数）
 export const modelPrices = pgTable(
   'model_prices',
