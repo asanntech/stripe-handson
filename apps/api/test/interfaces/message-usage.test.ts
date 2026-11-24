@@ -76,4 +76,54 @@ describe('メッセージ送信の利用履歴', () => {
       }),
     ])
   })
+
+  it('送信したとき 生成を始めた時刻で有効な単価が利用履歴に記録される（まだ適用前の改定は使わない）', async () => {
+    const [alice] = await db.insert(users).values({ name: 'alice' }).returning()
+    if (!alice) throw new Error('準備: users の INSERT が行を返しませんでした')
+    const [conversation] = await db.insert(conversations).values({ userId: alice.id }).returning()
+    if (!conversation) throw new Error('準備: conversations の INSERT が行を返しませんでした')
+    const [model] = await db.insert(models).values({ name: MODEL }).returning()
+    if (!model) throw new Error('準備: models の INSERT が行を返しませんでした')
+    const oneHour = 60 * 60 * 1000
+    const [current] = await db
+      .insert(modelPrices)
+      .values([
+        {
+          modelId: model.id,
+          inputPerMillionTokens: 3_000,
+          outputPerMillionTokens: 15_000,
+          effectiveFrom: new Date(Date.now() - oneHour),
+        },
+        {
+          modelId: model.id,
+          inputPerMillionTokens: 6_000,
+          outputPerMillionTokens: 30_000,
+          effectiveFrom: new Date(Date.now() + oneHour),
+        },
+      ])
+      .returning()
+    if (!current) throw new Error('準備: model_prices の INSERT が行を返しませんでした')
+    const llm = new FakeLlmClient(() => ({ inputTokens: 1_000, outputTokens: 200 }))
+    const app = createHonoApp(createTestRpcContext({ db, llm }))
+    const client: AppClient = createORPCClient(
+      new RPCLink({
+        url: 'http://localhost/api',
+        headers: { 'x-user-id': alice.id },
+        fetch: async (request) => app.fetch(request),
+      }),
+    )
+
+    for await (const _ of await client.messages.send({
+      conversationId: conversation.id,
+      clientMessageId: crypto.randomUUID(),
+      content: 'こんにちは',
+    })) {
+      // 完了まで読み切る
+    }
+
+    // 現行の単価で 3 + 3 = 6（改定後の単価なら 6 + 6 = 12）
+    expect(await db.select().from(usageRecords)).toEqual([
+      expect.objectContaining({ modelPriceId: current.id, credits: 6 }),
+    ])
+  })
 })
