@@ -8,6 +8,8 @@
   "scripts": {
     "db:up": "docker compose up -d --wait",
     "db:down": "docker compose down",
+    "db:migrate": "pnpm --filter @stripe-handson/api db:migrate",
+    "db:seed": "pnpm --filter @stripe-handson/api db:seed",
     "lint": "biome check .",
     "format": "biome check --write .",
     "test": "pnpm -r test",
