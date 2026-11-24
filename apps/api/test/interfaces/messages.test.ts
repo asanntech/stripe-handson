@@ -5,10 +5,18 @@ import { eq } from 'drizzle-orm'
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { requireEnv } from '@/config'
 import { createDb } from '@/infrastructure/db/client'
-import { assistantMessages, conversations, userMessages, users } from '@/infrastructure/db/schema'
+import {
+  assistantMessages,
+  conversations,
+  modelPrices,
+  models,
+  userMessages,
+  users,
+} from '@/infrastructure/db/schema'
 import { FakeLlmClient } from '@/infrastructure/llm/fake-llm-client'
 import { createHonoApp } from '@/interfaces/hono/app'
 import type { LlmClient } from '@/usecases/ports/llm-client'
+import { MODEL } from '@/usecases/send-message'
 import { createBarrier } from '../helpers/barrier'
 import { truncateAllTables } from '../helpers/database'
 import { createTestRpcContext } from '../helpers/rpc-context'
@@ -18,6 +26,15 @@ describe('メッセージ API', () => {
 
   beforeEach(async () => {
     await truncateAllTables(db)
+    // 送信の前提として単価を登録しておく（単価・利用履歴の振る舞いは message-usage.test.ts で検証する）
+    const [model] = await db.insert(models).values({ name: MODEL }).returning()
+    if (!model) throw new Error('準備: models の INSERT が行を返しませんでした')
+    await db.insert(modelPrices).values({
+      modelId: model.id,
+      inputPerMillionTokens: 3_000,
+      outputPerMillionTokens: 15_000,
+      effectiveFrom: new Date('2026-01-01T00:00:00Z'),
+    })
   })
 
   afterAll(async () => {

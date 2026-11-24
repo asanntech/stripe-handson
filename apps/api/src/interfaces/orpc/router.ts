@@ -23,7 +23,12 @@ export const router = orpc.router({
   messages: {
     send: authedOrpc.messages.send.handler(async function* ({ input, context, errors }) {
       const events = sendMessage(
-        { conversations: context.conversations, messages: context.messages, llm: context.llm },
+        {
+          conversations: context.conversations,
+          messages: context.messages,
+          modelPrices: context.modelPrices,
+          llm: context.llm,
+        },
         { ...input, userId: context.userId },
       )
       for await (const event of events) {

@@ -143,9 +143,22 @@ describe('MessageRepository: 応答の保存', () => {
       content: 'こんにちは',
     })
     const userMessageId = accepted._unsafeUnwrap().id
-    const first = await repository.complete({ userMessageId, content: '1 回目の応答' })
+    const [model] = await db.insert(models).values({ name: 'fake-model' }).returning()
+    if (!model) throw new Error('準備: models の INSERT が行を返しませんでした')
+    const [price] = await db
+      .insert(modelPrices)
+      .values({
+        modelId: model.id,
+        inputPerMillionTokens: 3_000,
+        outputPerMillionTokens: 15_000,
+        effectiveFrom: new Date('2026-01-01T00:00:00Z'),
+      })
+      .returning()
+    if (!price) throw new Error('準備: model_prices の INSERT が行を返しませんでした')
+    const usage = { modelPriceId: price.id, inputTokens: 10, outputTokens: 30, credits: 1 }
+    const first = await repository.complete({ userMessageId, content: '1 回目の応答', usage })
 
-    const second = await repository.complete({ userMessageId, content: '2 回目の応答' })
+    const second = await repository.complete({ userMessageId, content: '2 回目の応答', usage })
 
     expect(second._unsafeUnwrapErr()).toEqual({ type: 'duplicate_reply' })
     expect(await db.select().from(assistantMessages)).toEqual([

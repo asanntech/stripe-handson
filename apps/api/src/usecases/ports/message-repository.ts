@@ -44,10 +44,9 @@ export interface MessageRepository {
   // 「生成中」の送信を「失敗」にする（応答を保存できずに生成が終わったとき）
   markFailed(userMessageId: string): ResultAsync<void, RepositoryError>
   // 応答と利用記録を保存し、送信を「完了」にする
-  // usage は送信フローが利用記録を渡すようになるまでの間だけ省略可能
   complete(reply: {
     userMessageId: string
     content: string
-    usage?: NewUsageRecord
+    usage: NewUsageRecord
   }): ResultAsync<{ id: string }, RepositoryError | DuplicateReplyError>
 }

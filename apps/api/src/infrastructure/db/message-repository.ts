@@ -82,7 +82,7 @@ export const createMessageRepository = (db: DbExecutor): MessageRepository => ({
           .returning({ id: assistantMessages.id })
         // 衝突したら何も書いていないので、そのまま抜けてよい（送信の状態も変えない）
         if (!row) return null
-        if (usage !== undefined) await tx.insert(usageRecords).values({ userMessageId, ...usage })
+        await tx.insert(usageRecords).values({ userMessageId, ...usage })
         await tx
           .update(userMessages)
           .set({ status: 'completed' })

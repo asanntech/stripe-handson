@@ -1,15 +1,17 @@
+import { calculateCredits } from '@/domain/credit'
 import type { ConversationRepository } from '@/usecases/ports/conversation-repository'
-import type { LlmClient, LlmError } from '@/usecases/ports/llm-client'
+import type { LlmClient, LlmError, LlmUsage } from '@/usecases/ports/llm-client'
 import type {
   DuplicateReplyError,
   MessageRepository,
   NewUserMessage,
 } from '@/usecases/ports/message-repository'
+import type { ModelPriceRepository } from '@/usecases/ports/model-price-repository'
 import type { RepositoryError } from '@/usecases/ports/repository-error'
 import { runDetached } from './run-detached'
 
-// 第 1 章では固定値（第 2 章で単価表のモデル、第 4 章で残高から max_tokens を算出する）
-const MODEL = 'fake-model'
+// モデルは単一（クライアントからの選択はスコープ外）。max_tokens は第 4 章で残高から算出する
+export const MODEL = 'fake-model'
 const MAX_TOKENS = 1024
 
 // conversation_not_found: 会話が存在しないか、他人の会話（存在を知らせないため区別しない）
@@ -29,7 +31,12 @@ export type SendMessageEvent =
   | { type: 'done'; messageId: string }
   | { type: 'error'; error: SendMessageError }
 
-type Deps = { conversations: ConversationRepository; messages: MessageRepository; llm: LlmClient }
+type Deps = {
+  conversations: ConversationRepository
+  messages: MessageRepository
+  modelPrices: ModelPriceRepository
+  llm: LlmClient
+}
 
 // 会話の持ち主の確認 → 受付（送信を「生成中」で INSERT）→ LLM のストリーミング（DB Tx の外）→ 完了の保存
 export async function* sendMessage(
@@ -113,12 +120,22 @@ async function* generateReply(
   }
 
   try {
+    // 生成を始める時点の単価を、完了時の利用記録に固定する
+    const price = await deps.modelPrices.findEffective({ model: MODEL, at: new Date() })
+    if (price.isErr()) {
+      yield await fail(price.error)
+      return
+    }
+    if (price.value === null) throw new Error(`モデル ${MODEL} の単価が登録されていません`)
+
     let response = ''
+    let usage: LlmUsage | null = null
     for await (const event of deps.llm.stream({ model: MODEL, prompt, maxTokens: MAX_TOKENS })) {
       if (event.type === 'delta') {
         response += event.text
         yield event
       }
+      if (event.type === 'done') usage = event.usage
       if (event.type === 'error') {
         // 途中までの応答は保存しない（同じ ID で再送すれば再生成できる）
         yield await fail({ type: 'llm_unavailable', cause: event.error })
@@ -126,7 +143,18 @@ async function* generateReply(
       }
     }
 
-    const saved = await deps.messages.complete({ userMessageId, content: response })
+    // LlmClient は error で終わらなければ必ず done で終わる（usage がないのは実装のバグ）
+    if (usage === null) throw new Error('LLM のストリームが done を返さずに終わりました')
+
+    const saved = await deps.messages.complete({
+      userMessageId,
+      content: response,
+      usage: {
+        modelPriceId: price.value.id,
+        ...usage,
+        credits: calculateCredits(usage, price.value),
+      },
+    })
     if (saved.isErr()) {
       yield await fail(saved.error)
       return
