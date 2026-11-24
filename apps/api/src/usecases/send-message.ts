@@ -18,9 +18,11 @@ const MAX_TOKENS = 1024
 // llm_unavailable: LLM のストリームが途中で切れ、応答も usage も得られなかった
 // message_in_progress: 同じ client_message_id の送信が生成中で、返せる応答がない
 // duplicate_reply: 応答の二重保存を DB 制約が止めた（再送の排他をすり抜けたバグなので 500 にする）
+// model_price_not_found: モデルの単価が登録されていない（設定の不備なので 500 にする）
 export type SendMessageError =
   | RepositoryError
   | DuplicateReplyError
+  | { type: 'model_price_not_found'; model: string }
   | { type: 'conversation_not_found' }
   | { type: 'llm_unavailable'; cause: LlmError }
   | { type: 'message_in_progress' }
@@ -126,7 +128,11 @@ async function* generateReply(
       yield await fail(price.error)
       return
     }
-    if (price.value === null) throw new Error(`モデル ${MODEL} の単価が登録されていません`)
+    if (price.value === null) {
+      // 単価がないと利用を記録できないので、LLM を呼ぶ前に失敗させる
+      yield await fail({ type: 'model_price_not_found', model: MODEL })
+      return
+    }
 
     let response = ''
     let usage: LlmUsage | null = null

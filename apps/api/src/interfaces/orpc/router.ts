@@ -43,7 +43,7 @@ export const router = orpc.router({
           .with({ type: 'message_in_progress' }, () => errors.MESSAGE_IN_PROGRESS())
           .with({ type: 'llm_unavailable' }, (error) => errors.LLM_UNAVAILABLE({ cause: error }))
           .with(
-            { type: P.union('database_error', 'duplicate_reply') },
+            { type: P.union('database_error', 'duplicate_reply', 'model_price_not_found') },
             (error) => new ORPCError('INTERNAL_SERVER_ERROR', { cause: error }),
           )
           .exhaustive()

@@ -1,7 +1,7 @@
 import { createORPCClient } from '@orpc/client'
 import { RPCLink } from '@orpc/client/fetch'
 import type { AppClient } from '@stripe-handson/contract'
-import { afterAll, beforeEach, describe, expect, it } from 'vitest'
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { requireEnv } from '@/config'
 import { createDb } from '@/infrastructure/db/client'
 import {
@@ -27,6 +27,10 @@ describe('メッセージ送信の利用履歴', () => {
 
   afterAll(async () => {
     await db.$client.end()
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
   })
 
   it('応答が完了したとき 利用履歴に入出力トークン数・適用した単価・消費クレジットが記録される', async () => {
@@ -175,5 +179,48 @@ describe('メッセージ送信の利用履歴', () => {
     expect(await db.select().from(usageRecords)).toEqual([
       expect.objectContaining({ inputTokens: 2_000, outputTokens: 400, credits: 12 }),
     ])
+  })
+
+  it('モデルの単価が未登録のとき LLM を呼ばずに 500 を返し 送信は失敗になり 原因をサーバー側のログに出す', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const [alice] = await db.insert(users).values({ name: 'alice' }).returning()
+    if (!alice) throw new Error('準備: users の INSERT が行を返しませんでした')
+    const [conversation] = await db.insert(conversations).values({ userId: alice.id }).returning()
+    if (!conversation) throw new Error('準備: conversations の INSERT が行を返しませんでした')
+    let llmCalls = 0
+    const llm = new FakeLlmClient(() => {
+      llmCalls++
+      return { inputTokens: 1_000, outputTokens: 200 }
+    })
+    const app = createHonoApp(createTestRpcContext({ db, llm }))
+    const client: AppClient = createORPCClient(
+      new RPCLink({
+        url: 'http://localhost/api',
+        headers: { 'x-user-id': alice.id },
+        fetch: async (request) => app.fetch(request),
+      }),
+    )
+
+    await expect(async () => {
+      for await (const _ of await client.messages.send({
+        conversationId: conversation.id,
+        clientMessageId: crypto.randomUUID(),
+        content: 'こんにちは',
+      })) {
+        // エラーまで読む
+      }
+    }).rejects.toMatchObject({ code: 'INTERNAL_SERVER_ERROR', status: 500 })
+
+    expect(llmCalls).toBe(0)
+    expect(await db.select().from(userMessages)).toEqual([
+      expect.objectContaining({ status: 'failed' }),
+    ])
+    expect(consoleError).toHaveBeenCalledWith(
+      '[messages.send]',
+      expect.objectContaining({
+        status: 500,
+        cause: { type: 'model_price_not_found', model: MODEL },
+      }),
+    )
   })
 })
