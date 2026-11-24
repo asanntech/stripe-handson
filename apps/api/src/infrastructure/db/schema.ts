@@ -1,4 +1,4 @@
-import { pgEnum, pgTable, text, timestamp, unique, uuid } from 'drizzle-orm/pg-core'
+import { integer, pgEnum, pgTable, text, timestamp, unique, uuid } from 'drizzle-orm/pg-core'
 
 export const users = pgTable('users', {
   id: uuid().primaryKey().defaultRandom(),
@@ -55,4 +55,28 @@ export const assistantMessages = pgTable(
   },
   // 送信 1 回に応答は 1 つだけ（アプリの排他をすり抜けた二重保存を止める最後の砦）
   (t) => [unique('assistant_messages_user_message_id_unique').on(t.userMessageId)],
+)
+
+// LLM のモデル（マスタ）。単価は履歴を持つので model_prices に置く（models 1 : N model_prices）
+export const models = pgTable('models', {
+  id: uuid().primaryKey().defaultRandom(),
+  name: text().notNull().unique(),
+  createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+})
+
+// 単価表（履歴）。改定は既存行を UPDATE せず、新しい適用開始日時の行を追加する。
+// 単価は 100 万トークンあたりのクレジット（整数）
+export const modelPrices = pgTable(
+  'model_prices',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    modelId: uuid()
+      .notNull()
+      .references(() => models.id),
+    inputPerMillionTokens: integer().notNull(),
+    outputPerMillionTokens: integer().notNull(),
+    effectiveFrom: timestamp({ withTimezone: true }).notNull(),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [unique('model_prices_model_id_effective_from_unique').on(t.modelId, t.effectiveFrom)],
 )
