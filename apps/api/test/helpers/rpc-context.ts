@@ -2,6 +2,7 @@ import type { Db } from '@/infrastructure/db/client'
 import { createConversationRepository } from '@/infrastructure/db/conversation-repository'
 import { createDatabaseHealthCheck } from '@/infrastructure/db/health-check'
 import { createMessageRepository } from '@/infrastructure/db/message-repository'
+import { createModelPriceRepository } from '@/infrastructure/db/model-price-repository'
 import { createUserRepository } from '@/infrastructure/db/user-repository'
 import { FakeLlmClient } from '@/infrastructure/llm/fake-llm-client'
 import type { RpcContext } from '@/interfaces/orpc/setup'
@@ -20,5 +21,6 @@ export const createTestRpcContext = ({
   users: createUserRepository(db),
   conversations: createConversationRepository(db),
   messages: createMessageRepository(db),
+  modelPrices: createModelPriceRepository(db),
   llm,
 })

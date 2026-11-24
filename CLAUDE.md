@@ -6,6 +6,8 @@
 
 ```sh
 pnpm db:up        # PostgreSQL（host port 5436、開発用 app / テスト用 app_test）を起動
+pnpm db:migrate   # 開発用 DB（app）にマイグレーションを適用（テスト用 DB はテスト実行時に自動適用）
+pnpm db:seed      # 開発用 DB に初期データ（fake-model の単価）を投入（何度実行しても同じ）
 pnpm test         # 全テスト（実 PostgreSQL が必要。TDD の各遷移ではこれを使う）
 pnpm lint         # Biome（format + lint）チェック
 pnpm format       # Biome の自動修正

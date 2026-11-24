@@ -23,7 +23,12 @@ export const router = orpc.router({
   messages: {
     send: authedOrpc.messages.send.handler(async function* ({ input, context, errors }) {
       const events = sendMessage(
-        { conversations: context.conversations, messages: context.messages, llm: context.llm },
+        {
+          conversations: context.conversations,
+          messages: context.messages,
+          modelPrices: context.modelPrices,
+          llm: context.llm,
+        },
         { ...input, userId: context.userId },
       )
       for await (const event of events) {
@@ -38,7 +43,7 @@ export const router = orpc.router({
           .with({ type: 'message_in_progress' }, () => errors.MESSAGE_IN_PROGRESS())
           .with({ type: 'llm_unavailable' }, (error) => errors.LLM_UNAVAILABLE({ cause: error }))
           .with(
-            { type: P.union('database_error', 'duplicate_reply') },
+            { type: P.union('database_error', 'duplicate_reply', 'model_price_not_found') },
             (error) => new ORPCError('INTERNAL_SERVER_ERROR', { cause: error }),
           )
           .exhaustive()

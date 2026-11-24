@@ -5,6 +5,7 @@ import { z } from 'zod'
 import type { ConversationRepository } from '@/usecases/ports/conversation-repository'
 import type { LlmClient } from '@/usecases/ports/llm-client'
 import type { MessageRepository } from '@/usecases/ports/message-repository'
+import type { ModelPriceRepository } from '@/usecases/ports/model-price-repository'
 import type { UserRepository } from '@/usecases/ports/user-repository'
 
 // oRPC のセットアップ: contract を実装する procedure ビルダー（orpc / 認証済みの authedOrpc）と、
@@ -14,6 +15,7 @@ export type RpcContext = {
   users: UserRepository
   conversations: ConversationRepository
   messages: MessageRepository
+  modelPrices: ModelPriceRepository
   llm: LlmClient
 }
 

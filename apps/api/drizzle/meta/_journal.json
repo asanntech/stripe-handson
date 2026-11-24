@@ -36,6 +36,41 @@
       "when": 1795129454366,
       "tag": "0004_unique_reply_per_message",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1795508434456,
+      "tag": "0005_create_models_and_model_prices",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1795509454298,
+      "tag": "0006_create_usage_records",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1795516103093,
+      "tag": "0007_unique_usage_per_message",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1795516296524,
+      "tag": "0008_model_prices_append_only",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1795517321548,
+      "tag": "0009_non_negative_prices_and_usage",
+      "breakpoints": true
     }
   ]
 }

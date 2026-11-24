@@ -1,4 +1,5 @@
-import { pgEnum, pgTable, text, timestamp, unique, uuid } from 'drizzle-orm/pg-core'
+import { sql } from 'drizzle-orm'
+import { check, integer, pgEnum, pgTable, text, timestamp, unique, uuid } from 'drizzle-orm/pg-core'
 
 export const users = pgTable('users', {
   id: uuid().primaryKey().defaultRandom(),
@@ -55,4 +56,62 @@ export const assistantMessages = pgTable(
   },
   // 送信 1 回に応答は 1 つだけ（アプリの排他をすり抜けた二重保存を止める最後の砦）
   (t) => [unique('assistant_messages_user_message_id_unique').on(t.userMessageId)],
+)
+
+// LLM のモデル（マスタ）。単価は履歴を持つので model_prices に置く（models 1 : N model_prices）
+export const models = pgTable('models', {
+  id: uuid().primaryKey().defaultRandom(),
+  name: text().notNull().unique(),
+  createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+})
+
+// 単価表（履歴）。改定は既存行を UPDATE せず、新しい適用開始日時の行を追加する。
+// UPDATE / DELETE はトリガーで拒否する（drizzle/0008_model_prices_append_only.sql。Drizzle のスキーマでは表せない）。
+// 単価は 100 万トークンあたりのクレジット（整数）
+export const modelPrices = pgTable(
+  'model_prices',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    modelId: uuid()
+      .notNull()
+      .references(() => models.id),
+    inputPerMillionTokens: integer().notNull(),
+    outputPerMillionTokens: integer().notNull(),
+    effectiveFrom: timestamp({ withTimezone: true }).notNull(),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique('model_prices_model_id_effective_from_unique').on(t.modelId, t.effectiveFrom),
+    // 負の単価は「使うと残高が増える」記録を生む。単価表は追記のみで消せないため、入口で止める（0 は無料として許す）
+    check(
+      'model_prices_non_negative',
+      sql`${t.inputPerMillionTokens} >= 0 AND ${t.outputPerMillionTokens} >= 0`,
+    ),
+  ],
+)
+
+// 利用履歴。適用した単価は model_prices の行を参照する（単価表は追記のみなので、参照先の単価は変わらない）
+export const usageRecords = pgTable(
+  'usage_records',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    userMessageId: uuid()
+      .notNull()
+      .references(() => userMessages.id),
+    modelPriceId: uuid()
+      .notNull()
+      .references(() => modelPrices.id),
+    inputTokens: integer().notNull(),
+    outputTokens: integer().notNull(),
+    credits: integer().notNull(),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    // 送信 1 回につき利用記録は 1 つだけ（二重課金を止める最後の砦）
+    unique('usage_records_user_message_id_unique').on(t.userMessageId),
+    check(
+      'usage_records_non_negative',
+      sql`${t.inputTokens} >= 0 AND ${t.outputTokens} >= 0 AND ${t.credits} >= 0`,
+    ),
+  ],
 )

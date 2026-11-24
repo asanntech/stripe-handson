@@ -3,7 +3,15 @@ import { afterAll, beforeEach, describe, expect, it } from 'vitest'
 import { requireEnv } from '@/config'
 import { createDb } from '@/infrastructure/db/client'
 import { createMessageRepository } from '@/infrastructure/db/message-repository'
-import { assistantMessages, conversations, userMessages, users } from '@/infrastructure/db/schema'
+import {
+  assistantMessages,
+  conversations,
+  modelPrices,
+  models,
+  usageRecords,
+  userMessages,
+  users,
+} from '@/infrastructure/db/schema'
 import { createBarrier } from '../../helpers/barrier'
 import { truncateAllTables } from '../../helpers/database'
 import { waitUntilWaitingForLock } from '../../helpers/lock'
@@ -135,13 +143,97 @@ describe('MessageRepository: 応答の保存', () => {
       content: 'こんにちは',
     })
     const userMessageId = accepted._unsafeUnwrap().id
-    const first = await repository.complete({ userMessageId, content: '1 回目の応答' })
+    const [model] = await db.insert(models).values({ name: 'fake-model' }).returning()
+    if (!model) throw new Error('準備: models の INSERT が行を返しませんでした')
+    const [price] = await db
+      .insert(modelPrices)
+      .values({
+        modelId: model.id,
+        inputPerMillionTokens: 3_000,
+        outputPerMillionTokens: 15_000,
+        effectiveFrom: new Date('2026-01-01T00:00:00Z'),
+      })
+      .returning()
+    if (!price) throw new Error('準備: model_prices の INSERT が行を返しませんでした')
+    const usage = { modelPriceId: price.id, inputTokens: 10, outputTokens: 30, credits: 1 }
+    const first = await repository.complete({ userMessageId, content: '1 回目の応答', usage })
 
-    const second = await repository.complete({ userMessageId, content: '2 回目の応答' })
+    const second = await repository.complete({ userMessageId, content: '2 回目の応答', usage })
 
     expect(second._unsafeUnwrapErr()).toEqual({ type: 'duplicate_reply' })
     expect(await db.select().from(assistantMessages)).toEqual([
       expect.objectContaining({ id: first._unsafeUnwrap().id, content: '1 回目の応答' }),
+    ])
+  })
+
+  it('応答を保存するとき 利用記録（トークン数・適用した単価・消費クレジット）も保存される', async () => {
+    const [alice] = await db.insert(users).values({ name: 'alice' }).returning()
+    if (!alice) throw new Error('準備: users の INSERT が行を返しませんでした')
+    const [conversation] = await db.insert(conversations).values({ userId: alice.id }).returning()
+    if (!conversation) throw new Error('準備: conversations の INSERT が行を返しませんでした')
+    const [model] = await db.insert(models).values({ name: 'fake-model' }).returning()
+    if (!model) throw new Error('準備: models の INSERT が行を返しませんでした')
+    const [price] = await db
+      .insert(modelPrices)
+      .values({
+        modelId: model.id,
+        inputPerMillionTokens: 3_000,
+        outputPerMillionTokens: 15_000,
+        effectiveFrom: new Date('2026-01-01T00:00:00Z'),
+      })
+      .returning()
+    if (!price) throw new Error('準備: model_prices の INSERT が行を返しませんでした')
+    const repository = createMessageRepository(db)
+    const accepted = await repository.createUserMessage({
+      conversationId: conversation.id,
+      clientMessageId: crypto.randomUUID(),
+      content: 'こんにちは',
+    })
+    const userMessageId = accepted._unsafeUnwrap().id
+
+    const result = await repository.complete({
+      userMessageId,
+      content: '応答',
+      usage: { modelPriceId: price.id, inputTokens: 10, outputTokens: 30, credits: 1 },
+    })
+
+    expect(result.isOk()).toBe(true)
+    expect(await db.select().from(usageRecords)).toEqual([
+      expect.objectContaining({
+        userMessageId,
+        modelPriceId: price.id,
+        inputTokens: 10,
+        outputTokens: 30,
+        credits: 1,
+      }),
+    ])
+  })
+
+  it('利用記録を保存できないとき 応答も保存されず 送信は生成中のまま（同じ Tx でロールバックされる）', async () => {
+    const [alice] = await db.insert(users).values({ name: 'alice' }).returning()
+    if (!alice) throw new Error('準備: users の INSERT が行を返しませんでした')
+    const [conversation] = await db.insert(conversations).values({ userId: alice.id }).returning()
+    if (!conversation) throw new Error('準備: conversations の INSERT が行を返しませんでした')
+    const repository = createMessageRepository(db)
+    const accepted = await repository.createUserMessage({
+      conversationId: conversation.id,
+      clientMessageId: crypto.randomUUID(),
+      content: 'こんにちは',
+    })
+    const userMessageId = accepted._unsafeUnwrap().id
+
+    // 存在しない単価行を参照させ、利用記録の INSERT を FK 違反で失敗させる
+    const result = await repository.complete({
+      userMessageId,
+      content: '応答',
+      usage: { modelPriceId: crypto.randomUUID(), inputTokens: 10, outputTokens: 30, credits: 1 },
+    })
+
+    expect(result._unsafeUnwrapErr()).toMatchObject({ type: 'database_error' })
+    expect(await db.select().from(assistantMessages)).toEqual([])
+    expect(await db.select().from(usageRecords)).toEqual([])
+    expect(await db.select().from(userMessages)).toEqual([
+      expect.objectContaining({ id: userMessageId, status: 'generating' }),
     ])
   })
 })

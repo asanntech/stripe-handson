@@ -1,0 +1,2 @@
+ALTER TABLE "model_prices" ADD CONSTRAINT "model_prices_non_negative" CHECK ("model_prices"."input_per_million_tokens" >= 0 AND "model_prices"."output_per_million_tokens" >= 0);--> statement-breakpoint
+ALTER TABLE "usage_records" ADD CONSTRAINT "usage_records_non_negative" CHECK ("usage_records"."input_tokens" >= 0 AND "usage_records"."output_tokens" >= 0 AND "usage_records"."credits" >= 0);

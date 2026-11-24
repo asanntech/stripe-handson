@@ -4,6 +4,7 @@ import { createDb } from './infrastructure/db/client'
 import { createConversationRepository } from './infrastructure/db/conversation-repository'
 import { createDatabaseHealthCheck } from './infrastructure/db/health-check'
 import { createMessageRepository } from './infrastructure/db/message-repository'
+import { createModelPriceRepository } from './infrastructure/db/model-price-repository'
 import { createUserRepository } from './infrastructure/db/user-repository'
 import { FakeLlmClient } from './infrastructure/llm/fake-llm-client'
 import { createHonoApp } from './interfaces/hono/app'
@@ -15,6 +16,7 @@ const app = createHonoApp({
   users: createUserRepository(db),
   conversations: createConversationRepository(db),
   messages: createMessageRepository(db),
+  modelPrices: createModelPriceRepository(db),
   // 実 LLM には接続しない（plan.md）。開発時はストリーミングが目で追える速さで 30 トークン返す
   llm: new FakeLlmClient(() => ({ inputTokens: 10, outputTokens: 30, chunkDelayMs: 50 })),
 })
