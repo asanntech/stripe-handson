@@ -208,4 +208,32 @@ describe('MessageRepository: 応答の保存', () => {
       }),
     ])
   })
+
+  it('利用記録を保存できないとき 応答も保存されず 送信は生成中のまま（同じ Tx でロールバックされる）', async () => {
+    const [alice] = await db.insert(users).values({ name: 'alice' }).returning()
+    if (!alice) throw new Error('準備: users の INSERT が行を返しませんでした')
+    const [conversation] = await db.insert(conversations).values({ userId: alice.id }).returning()
+    if (!conversation) throw new Error('準備: conversations の INSERT が行を返しませんでした')
+    const repository = createMessageRepository(db)
+    const accepted = await repository.createUserMessage({
+      conversationId: conversation.id,
+      clientMessageId: crypto.randomUUID(),
+      content: 'こんにちは',
+    })
+    const userMessageId = accepted._unsafeUnwrap().id
+
+    // 存在しない単価行を参照させ、利用記録の INSERT を FK 違反で失敗させる
+    const result = await repository.complete({
+      userMessageId,
+      content: '応答',
+      usage: { modelPriceId: crypto.randomUUID(), inputTokens: 10, outputTokens: 30, credits: 1 },
+    })
+
+    expect(result._unsafeUnwrapErr()).toMatchObject({ type: 'database_error' })
+    expect(await db.select().from(assistantMessages)).toEqual([])
+    expect(await db.select().from(usageRecords)).toEqual([])
+    expect(await db.select().from(userMessages)).toEqual([
+      expect.objectContaining({ id: userMessageId, status: 'generating' }),
+    ])
+  })
 })
