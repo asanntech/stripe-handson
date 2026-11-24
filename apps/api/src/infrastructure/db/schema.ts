@@ -1,4 +1,5 @@
-import { integer, pgEnum, pgTable, text, timestamp, unique, uuid } from 'drizzle-orm/pg-core'
+import { sql } from 'drizzle-orm'
+import { check, integer, pgEnum, pgTable, text, timestamp, unique, uuid } from 'drizzle-orm/pg-core'
 
 export const users = pgTable('users', {
   id: uuid().primaryKey().defaultRandom(),
@@ -79,7 +80,14 @@ export const modelPrices = pgTable(
     effectiveFrom: timestamp({ withTimezone: true }).notNull(),
     createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [unique('model_prices_model_id_effective_from_unique').on(t.modelId, t.effectiveFrom)],
+  (t) => [
+    unique('model_prices_model_id_effective_from_unique').on(t.modelId, t.effectiveFrom),
+    // 負の単価は「使うと残高が増える」記録を生む。単価表は追記のみで消せないため、入口で止める（0 は無料として許す）
+    check(
+      'model_prices_non_negative',
+      sql`${t.inputPerMillionTokens} >= 0 AND ${t.outputPerMillionTokens} >= 0`,
+    ),
+  ],
 )
 
 // 利用履歴。適用した単価は model_prices の行を参照する（単価表は追記のみなので、参照先の単価は変わらない）
@@ -98,6 +106,12 @@ export const usageRecords = pgTable(
     credits: integer().notNull(),
     createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
   },
-  // 送信 1 回につき利用記録は 1 つだけ（二重課金を止める最後の砦）
-  (t) => [unique('usage_records_user_message_id_unique').on(t.userMessageId)],
+  (t) => [
+    // 送信 1 回につき利用記録は 1 つだけ（二重課金を止める最後の砦）
+    unique('usage_records_user_message_id_unique').on(t.userMessageId),
+    check(
+      'usage_records_non_negative',
+      sql`${t.inputTokens} >= 0 AND ${t.outputTokens} >= 0 AND ${t.credits} >= 0`,
+    ),
+  ],
 )

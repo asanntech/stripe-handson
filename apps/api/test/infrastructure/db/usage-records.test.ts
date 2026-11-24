@@ -71,4 +71,55 @@ describe('usage_records の制約', () => {
     expect(getPgErrorCode(error)).toBe('23505')
     expect(await db.select().from(usageRecords)).toHaveLength(1)
   })
+
+  it.each(['inputTokens', 'outputTokens', 'credits'] as const)(
+    '利用履歴の %s が負のとき CHECK 制約で拒否される',
+    async (column) => {
+      const [alice] = await db.insert(users).values({ name: 'alice' }).returning()
+      if (!alice) throw new Error('準備: users の INSERT が行を返しませんでした')
+      const [conversation] = await db.insert(conversations).values({ userId: alice.id }).returning()
+      if (!conversation) throw new Error('準備: conversations の INSERT が行を返しませんでした')
+      const [message] = await db
+        .insert(userMessages)
+        .values({
+          conversationId: conversation.id,
+          clientMessageId: crypto.randomUUID(),
+          content: 'こんにちは',
+          status: 'generating',
+        })
+        .returning()
+      if (!message) throw new Error('準備: user_messages の INSERT が行を返しませんでした')
+      const [model] = await db.insert(models).values({ name: 'fake-model' }).returning()
+      if (!model) throw new Error('準備: models の INSERT が行を返しませんでした')
+      const [price] = await db
+        .insert(modelPrices)
+        .values({
+          modelId: model.id,
+          inputPerMillionTokens: 3_000,
+          outputPerMillionTokens: 15_000,
+          effectiveFrom: new Date('2026-01-01T00:00:00Z'),
+        })
+        .returning()
+      if (!price) throw new Error('準備: model_prices の INSERT が行を返しませんでした')
+
+      const error = await db
+        .insert(usageRecords)
+        .values({
+          userMessageId: message.id,
+          modelPriceId: price.id,
+          inputTokens: 10,
+          outputTokens: 30,
+          credits: 1,
+          [column]: -1,
+        })
+        .then(
+          () => null,
+          (caught: unknown) => caught,
+        )
+
+      // 23514: check_violation（第 3 章で credits を残高から引くとき、負の値は残高を増やしてしまう）
+      expect(getPgErrorCode(error)).toBe('23514')
+      expect(await db.select().from(usageRecords)).toEqual([])
+    },
+  )
 })

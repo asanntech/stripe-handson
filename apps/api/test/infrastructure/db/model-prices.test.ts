@@ -6,7 +6,7 @@ import { getPgErrorCode } from '@/infrastructure/db/pg-error'
 import { modelPrices, models } from '@/infrastructure/db/schema'
 import { truncateAllTables } from '../../helpers/database'
 
-describe('model_prices の追記のみの強制', () => {
+describe('model_prices の制約', () => {
   const db = createDb({ connectionString: requireEnv('TEST_DATABASE_URL') })
 
   beforeEach(async () => {
@@ -70,4 +70,30 @@ describe('model_prices の追記のみの強制', () => {
     expect(getPgErrorCode(error)).toBe('23001')
     expect(await db.select().from(modelPrices)).toEqual([price])
   })
+
+  it.each(['inputPerMillionTokens', 'outputPerMillionTokens'] as const)(
+    '単価（%s）が負のとき CHECK 制約で拒否される',
+    async (column) => {
+      const [model] = await db.insert(models).values({ name: 'fake-model' }).returning()
+      if (!model) throw new Error('準備: models の INSERT が行を返しませんでした')
+
+      const error = await db
+        .insert(modelPrices)
+        .values({
+          modelId: model.id,
+          inputPerMillionTokens: 3_000,
+          outputPerMillionTokens: 15_000,
+          effectiveFrom: new Date('2026-01-01T00:00:00Z'),
+          [column]: -1,
+        })
+        .then(
+          () => null,
+          (caught: unknown) => caught,
+        )
+
+      // 23514: check_violation（負の単価は「使うと残高が増える」記録を生む）
+      expect(getPgErrorCode(error)).toBe('23514')
+      expect(await db.select().from(modelPrices)).toEqual([])
+    },
+  )
 })
