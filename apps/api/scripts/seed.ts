@@ -12,7 +12,7 @@ try {
   const [model] = await db.select().from(models).where(eq(models.name, MODEL))
   if (!model) throw new Error(`モデル ${MODEL} が見つかりません`)
   // 単価表は追記のみ（UPDATE はトリガーで拒否される）なので、既にある行は変えない
-  await db
+  const inserted = await db
     .insert(modelPrices)
     .values({
       modelId: model.id,
@@ -21,7 +21,12 @@ try {
       effectiveFrom: new Date('2026-01-01T00:00:00Z'),
     })
     .onConflictDoNothing({ target: [modelPrices.modelId, modelPrices.effectiveFrom] })
-  console.log(`seed: ${MODEL} の単価を登録しました`)
+    .returning({ id: modelPrices.id })
+  console.log(
+    inserted.length > 0
+      ? `seed: ${MODEL} の単価を登録しました`
+      : `seed: ${MODEL} の単価は登録済みのため変更しませんでした`,
+  )
 } finally {
   await db.$client.end()
 }
