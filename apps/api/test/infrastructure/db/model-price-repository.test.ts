@@ -16,32 +16,6 @@ describe('ModelPriceRepository: 有効な単価の取得', () => {
     await db.$client.end()
   })
 
-  it('モデルの単価が登録されているとき その単価（単価表の行 ID 付き）を取得できる', async () => {
-    const [model] = await db.insert(models).values({ name: 'fake-model' }).returning()
-    if (!model) throw new Error('準備: models の INSERT が行を返しませんでした')
-    const [price] = await db
-      .insert(modelPrices)
-      .values({
-        modelId: model.id,
-        inputPerMillionTokens: 3_000,
-        outputPerMillionTokens: 15_000,
-        effectiveFrom: new Date('2026-01-01T00:00:00Z'),
-      })
-      .returning()
-    if (!price) throw new Error('準備: model_prices の INSERT が行を返しませんでした')
-
-    const result = await createModelPriceRepository(db).findEffective({
-      model: 'fake-model',
-      at: new Date('2026-06-01T00:00:00Z'),
-    })
-
-    expect(result._unsafeUnwrap()).toEqual({
-      id: price.id,
-      inputPerMillionTokens: 3_000,
-      outputPerMillionTokens: 15_000,
-    })
-  })
-
   it('同じモデルに単価が複数登録されているとき 適用開始日時が最新の単価を取得する', async () => {
     const [model] = await db.insert(models).values({ name: 'fake-model' }).returning()
     if (!model) throw new Error('準備: models の INSERT が行を返しませんでした')
@@ -73,6 +47,40 @@ describe('ModelPriceRepository: 有効な単価の取得', () => {
       id: revised.id,
       inputPerMillionTokens: 2_000,
       outputPerMillionTokens: 10_000,
+    })
+  })
+
+  it('未来の日時から適用される改定があるとき それを使わず 指定時刻に有効な単価を取得する', async () => {
+    const [model] = await db.insert(models).values({ name: 'fake-model' }).returning()
+    if (!model) throw new Error('準備: models の INSERT が行を返しませんでした')
+    const [current] = await db
+      .insert(modelPrices)
+      .values([
+        {
+          modelId: model.id,
+          inputPerMillionTokens: 3_000,
+          outputPerMillionTokens: 15_000,
+          effectiveFrom: new Date('2026-01-01T00:00:00Z'),
+        },
+        {
+          modelId: model.id,
+          inputPerMillionTokens: 2_000,
+          outputPerMillionTokens: 10_000,
+          effectiveFrom: new Date('2026-07-01T00:00:00Z'),
+        },
+      ])
+      .returning()
+    if (!current) throw new Error('準備: model_prices の INSERT が行を返しませんでした')
+
+    const result = await createModelPriceRepository(db).findEffective({
+      model: 'fake-model',
+      at: new Date('2026-06-01T00:00:00Z'),
+    })
+
+    expect(result._unsafeUnwrap()).toEqual({
+      id: current.id,
+      inputPerMillionTokens: 3_000,
+      outputPerMillionTokens: 15_000,
     })
   })
 })
