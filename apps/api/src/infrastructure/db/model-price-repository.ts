@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm'
+import { desc, eq } from 'drizzle-orm'
 import { ResultAsync } from 'neverthrow'
 import type { ModelPriceRepository } from '@/usecases/ports/model-price-repository'
 import type { RepositoryError } from '@/usecases/ports/repository-error'
@@ -17,6 +17,7 @@ export const createModelPriceRepository = (db: DbExecutor): ModelPriceRepository
         .from(modelPrices)
         .innerJoin(models, eq(models.id, modelPrices.modelId))
         .where(eq(models.name, model))
+        .orderBy(desc(modelPrices.effectiveFrom))
         .limit(1),
       (cause): RepositoryError => ({ type: 'database_error', cause }),
     ).map(([row]) => row ?? null),
