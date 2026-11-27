@@ -17,7 +17,7 @@ export type LlmStopReason = 'end_turn' | 'max_tokens'
 export type LlmError = { type: 'disconnected' }
 
 // delta を 0 回以上流したあと、done（正常終了）か error（異常終了）のどちらか 1 つで必ず終わる。
-// エラーは throw せず値として返す（neverthrow の方針と同じく、呼び出し側が型で分岐できるようにする）
+// エラーは throw せず値として返す（Result と同じく、呼び出し側が型で分岐できるようにする）
 export type LlmStreamEvent =
   | { type: 'delta'; text: string }
   | { type: 'done'; stopReason: LlmStopReason; usage: LlmUsage }

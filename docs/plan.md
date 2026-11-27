@@ -25,7 +25,7 @@ Stripe と連携した「トークン消費型 AI チャット」を題材に網
 | LLM | 自作 `FakeLlmClient` のみ（`LlmClient` ポートの実装） | 出力トークン数・チャンク間遅延・切断位置・max_tokens 打ち切りをリクエスト単位で指定、usage を返す。実 LLM には接続しない |
 | 認証 | `X-User-Id` ヘッダーの簡易認証 | スコープ外 |
 | Lint / Format | Biome 単体 | 後述「リント方針」 |
-| エラーハンドリング | neverthrow（全層） | 後述「エラーハンドリング方針」 |
+| エラーハンドリング | 想定内のエラーだけ自前の `Result` 型（`domain/result.ts`）、想定外は例外 | 後述「エラーハンドリング方針」 |
 | 開発手法 | `/tdd` スキル（AI が実装、ユーザーはサイクル境界でレビュー） | |
 
 ## ドメインとビジネスルール
@@ -110,21 +110,28 @@ Stripe と連携した「トークン消費型 AI チャット」を題材に網
 - DB 制約は最後の砦として併用し、制約違反はリポジトリでドメインエラーに変換する。
 - Stripe / LLM はポート（`PaymentGateway` / `LlmClient`）。**外部 API 呼び出しを DB Tx の中で行わない**。
 
-## エラーハンドリング方針（neverthrow・全層）
+## エラーハンドリング方針（想定内のエラーだけ Result・想定外は例外）
 
-- ドメイン・ユースケース・リポジトリ・外部ゲートウェイ（Stripe / LLM）はすべて `Result` / `ResultAsync` を返す。
-- **例外 → Result の変換はインフラ層の境界だけ**（Drizzle / Stripe SDK / LLM 呼び出し箇所で `ResultAsync.fromPromise` 等）。
-  ドメイン・ユースケースでは throw しない。
-- エラー型は判別可能なユニオン（`type` フィールド）で定義する:
-  - ドメインエラー: 残高不足 / 超過上限到達 / 重複送信 / 冪等キーの内容不一致 など
-  - インフラエラー: `retryable`（デッドロック 40P01・直列化失敗 40001）と `fatal`（接続断・不明）を区別
-- リポジトリは PostgreSQL のエラーコードを変換する（23505 ユニーク違反 → 該当ドメインエラー、23514 CHECK 違反 → 超過上限到達 等）。
+- **想定内のエラー（業務上の意味があり、呼び出し側が種類ごとに扱いを変えるもの）だけ `Result` で返す。**
+  `Result<T, E>` は `{ ok: true; value } | { ok: false; error }` の判別可能なユニオンで、`domain/result.ts` に置く（ライブラリは使わない）。
+  呼び出し側は `if (!result.ok) ...` の早期 return で分岐する。
+  - 例: 残高不足 / 超過上限到達 / 重複送信 / 冪等キーの内容不一致 / 外部 API の想定内の失敗（LLM の切断など）
+- **想定外のエラー（接続断・SQL のバグ・想定していない制約違反など）は Result にせず、例外のまま投げる。**
+  どの呼び出し側も「上に渡して最後に 500 にする」しかできないため、Result にしても分岐が増えるだけで扱いは変わらない。
+  最上位（oRPC の `logServerErrorInterceptor`）でログに出して 500 にする。ユースケースは `finally` で後始末だけを行う。
+- エラー型は判別可能なユニオン（`type` フィールド）で定義する。
+- **DB のエラーの線引き**（リポジトリの責務）:
+  | 種類 | 例 | 扱い |
+  |---|---|---|
+  | 業務上の意味がある | 23505 ユニーク違反 → 重複、23514 CHECK 違反 → 超過上限到達、55P03 ロック取得不可 | 該当メソッドの中で `getPgErrorCode` で判定し、ドメインエラーの `Result` に変換する（`ON CONFLICT DO NOTHING` の 0 行で判定できるときはそれを使う） |
+  | リトライ可能 | 40P01 デッドロック・40001 直列化失敗 | 例外のまま投げ、`TransactionManager` が SQLSTATE を見て回数上限付きでリトライする |
+  | 想定外 | 接続断・不明な制約違反 | 例外のまま投げる（500） |
+  | ヘルスチェック | `database_unavailable` | DB の停止を検出するのが目的なので `Result` で返す |
 - **TransactionManager の規約（重要）**: Drizzle は「コールバックが throw したときだけ」ロールバックする。
-  `err` を返すと途中までの書き込みがコミットされてしまうため、`TransactionManager.run` が
-  **`Err` を受けたら内部の番兵例外でロールバックし、外側で `Err` に戻す**。`retryable` なインフラエラーは回数上限付きでリトライする。
-- ハンドラー層（oRPC）で `match` し、ドメインエラーを oRPC の型付きエラーに、インフラエラーを 500 系に変換する。
-  それでも漏れた例外（バグ）は最上位のエラーハンドラーで 500 にする。
-- Biome では「Result の戻り値の無視」を検出できない（`eslint-plugin-neverthrow` は ESLint 専用）。
+  想定外の DB エラーは例外のままなので自然にロールバックされる。一方、ドメインの `err` を返すと途中までの書き込みがコミットされてしまうため、
+  `TransactionManager.run` が **`Err` を受けたら内部の番兵例外でロールバックし、外側で `Err` に戻す**。
+- ハンドラー層（oRPC）でエラーの `type` を `switch` で網羅的に分岐し（`default` の `satisfies never` で変換漏れを typecheck で止める）、ドメインエラーを oRPC の型付きエラーに変換する。
+- Biome では「Result の戻り値の無視」を検出できない。
   エラー経路は必ずテストで検証する（特に「Err のときロールバックされる」ことを TransactionManager のテストで保証）。
 
 ## リント方針（Biome）
@@ -205,7 +212,7 @@ DB 関連のバグを機械的に止めることを主目的とする。
 | 調査ツール | PostgreSQL 本体 ＋ 公式拡張 | PgHero・pg_stat_statements 追加 / RDS | 環境非依存の知識。発見工程は対象外 |
 | Tx の責務 | ユースケースが境界、ロックはメソッド名で明示 | リポジトリ隠蔽 / 軽量レイヤード | ロックは業務ルール。層の上で可視化する |
 | Lint / Format | Biome 単体 | Oxlint（type-aware）＋ oxfmt / Oxlint ＋ Biome 整形 / ESLint ＋ Prettier | 1 ツール・1 設定のシンプルさを優先。floating promise の検出漏れはテストで補う |
-| エラーハンドリング | neverthrow（全層） | 想定内エラーのみ Result / 自前 Result 型 / 例外のみ | 全層で型による一貫性を優先。Tx ロールバックは TransactionManager で吸収 |
+| エラーハンドリング | 想定内のエラーだけ自前 Result 型、想定外は例外 | neverthrow（全層） / 自前 Result 型（全層） / 例外のみ | 当初は neverthrow（全層）を採用したが、チェーン（`andThen` 等）を使わず `isErr` の早期 return だけだったため、学習コストに見合わないとして自前の型に置き換えた（ts-pattern も同様に `switch` へ）。さらに、想定外の DB エラーを Result にしても全呼び出し側が上に渡して 500 にするだけだったため、例外のままにした。例外にすると Drizzle の Tx ロールバックやデッドロックのリトライとも素直に噛み合う |
 | Fake LLM | 自作 `FakeLlmClient`（実 LLM なし） | LangChain の Fake / Vercel AI SDK のテスト用モデル / Claude API アダプター併設 | usage・切断・max_tokens を完全制御でき依存も増えない。費用ゼロで DB 学習に集中 |
 | 用語 | クレジット付与（`credit_grants`） | ロット / バケット | Stripe Billing の Credit Grants と語彙を揃える。無償付与・購入を `source` で区別 |
 | 残高の正本 | 自前 DB（お金は Stripe、クレジットは自前 DB） | Stripe Billing Credit Grants + Meters（後払い） | 送信ごとのリアルタイム判定が必要。Stripe 側は非同期集計・請求時相殺で、プリペイドの即時停止と噛み合わない |

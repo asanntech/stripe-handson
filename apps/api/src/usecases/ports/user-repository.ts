@@ -1,6 +1,4 @@
-import type { ResultAsync } from 'neverthrow'
-import type { RepositoryError } from './repository-error'
-
+// 想定外の DB エラー（接続断など）は例外のまま投げる（plan.md「エラーハンドリング方針」）
 export interface UserRepository {
-  exists(userId: string): ResultAsync<boolean, RepositoryError>
+  exists(userId: string): Promise<boolean>
 }

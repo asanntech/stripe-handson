@@ -43,7 +43,7 @@ describe('ModelPriceRepository: 有効な単価の取得', () => {
       at: new Date('2026-06-01T00:00:00Z'),
     })
 
-    expect(result._unsafeUnwrap()).toEqual({
+    expect(result).toEqual({
       id: revised.id,
       inputPerMillionTokens: 2_000,
       outputPerMillionTokens: 10_000,
@@ -77,7 +77,7 @@ describe('ModelPriceRepository: 有効な単価の取得', () => {
       at: new Date('2026-06-01T00:00:00Z'),
     })
 
-    expect(result._unsafeUnwrap()).toEqual({
+    expect(result).toEqual({
       id: current.id,
       inputPerMillionTokens: 3_000,
       outputPerMillionTokens: 15_000,
@@ -111,7 +111,7 @@ describe('ModelPriceRepository: 有効な単価の取得', () => {
       at: new Date('2026-07-01T00:00:00Z'),
     })
 
-    expect(result._unsafeUnwrap()).toEqual({
+    expect(result).toEqual({
       id: revised.id,
       inputPerMillionTokens: 2_000,
       outputPerMillionTokens: 10_000,
