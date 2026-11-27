@@ -4,6 +4,7 @@ import { requireEnv } from '@/config'
 import { err } from '@/domain/result'
 import { createDb } from '@/infrastructure/db/client'
 import { createMessageRepository } from '@/infrastructure/db/message-repository'
+import { getPgErrorCode } from '@/infrastructure/db/pg-error'
 import {
   assistantMessages,
   conversations,
@@ -226,13 +227,19 @@ describe('MessageRepository: 応答の保存', () => {
 
     // 存在しない単価行を参照させ、利用記録の INSERT を FK 違反で失敗させる
     // 想定外の DB エラーは Result にせず、例外のまま投げる
-    await expect(
-      repository.complete({
+    const error = await repository
+      .complete({
         userMessageId,
         content: '応答',
         usage: { modelPriceId: crypto.randomUUID(), inputTokens: 10, outputTokens: 30, credits: 1 },
-      }),
-    ).rejects.toThrow()
+      })
+      .then(
+        () => null,
+        (caught: unknown) => caught,
+      )
+
+    // 23503: foreign_key_violation
+    expect(getPgErrorCode(error)).toBe('23503')
     expect(await db.select().from(assistantMessages)).toEqual([])
     expect(await db.select().from(usageRecords)).toEqual([])
     expect(await db.select().from(userMessages)).toEqual([
