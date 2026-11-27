@@ -54,7 +54,9 @@ export async function* sendMessage(
     yield* runDetached(generateReply(deps, accepted.value.id, input.content))
     return
   }
-  // 受付の失敗は重複（同じ client_message_id の送信がすでにある）だけ
+  // 受付の失敗は重複（同じ client_message_id の送信がすでにある）だけ。
+  // 種類を足したら、ここが typecheck で止まる（重複として黙って扱わないように）
+  accepted.error.type satisfies 'duplicate_client_message'
   yield* handleDuplicate(deps, input)
 }
 
