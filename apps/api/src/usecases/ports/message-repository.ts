@@ -1,4 +1,4 @@
-import type { ResultAsync } from 'neverthrow'
+import type { Result } from '@/domain/result'
 import type { RepositoryError } from './repository-error'
 
 export type NewUserMessage = {
@@ -34,19 +34,19 @@ export interface MessageRepository {
   // 送信を「生成中」として受け付ける
   createUserMessage(
     message: NewUserMessage,
-  ): ResultAsync<{ id: string }, RepositoryError | DuplicateClientMessageError>
+  ): Promise<Result<{ id: string }, RepositoryError | DuplicateClientMessageError>>
   findByClientMessageId(key: {
     conversationId: string
     clientMessageId: string
-  }): ResultAsync<SentMessage | null, RepositoryError>
+  }): Promise<Result<SentMessage | null, RepositoryError>>
   // 「失敗」の送信を「生成中」に戻す（条件付き UPDATE）。同時に呼ばれても true になるのは 1 つだけ
-  claimFailedForRetry(userMessageId: string): ResultAsync<boolean, RepositoryError>
+  claimFailedForRetry(userMessageId: string): Promise<Result<boolean, RepositoryError>>
   // 「生成中」の送信を「失敗」にする（応答を保存できずに生成が終わったとき）
-  markFailed(userMessageId: string): ResultAsync<void, RepositoryError>
+  markFailed(userMessageId: string): Promise<Result<void, RepositoryError>>
   // 応答と利用記録を保存し、送信を「完了」にする
   complete(reply: {
     userMessageId: string
     content: string
     usage: NewUsageRecord
-  }): ResultAsync<{ id: string }, RepositoryError | DuplicateReplyError>
+  }): Promise<Result<{ id: string }, RepositoryError | DuplicateReplyError>>
 }

@@ -25,7 +25,7 @@ Stripe と連携した「トークン消費型 AI チャット」を題材に網
 | LLM | 自作 `FakeLlmClient` のみ（`LlmClient` ポートの実装） | 出力トークン数・チャンク間遅延・切断位置・max_tokens 打ち切りをリクエスト単位で指定、usage を返す。実 LLM には接続しない |
 | 認証 | `X-User-Id` ヘッダーの簡易認証 | スコープ外 |
 | Lint / Format | Biome 単体 | 後述「リント方針」 |
-| エラーハンドリング | neverthrow（全層） | 後述「エラーハンドリング方針」 |
+| エラーハンドリング | 自前の `Result` 型（全層、`domain/result.ts`） | 後述「エラーハンドリング方針」 |
 | 開発手法 | `/tdd` スキル（AI が実装、ユーザーはサイクル境界でレビュー） | |
 
 ## ドメインとビジネスルール
@@ -110,10 +110,12 @@ Stripe と連携した「トークン消費型 AI チャット」を題材に網
 - DB 制約は最後の砦として併用し、制約違反はリポジトリでドメインエラーに変換する。
 - Stripe / LLM はポート（`PaymentGateway` / `LlmClient`）。**外部 API 呼び出しを DB Tx の中で行わない**。
 
-## エラーハンドリング方針（neverthrow・全層）
+## エラーハンドリング方針（自前の Result 型・全層）
 
-- ドメイン・ユースケース・リポジトリ・外部ゲートウェイ（Stripe / LLM）はすべて `Result` / `ResultAsync` を返す。
-- **例外 → Result の変換はインフラ層の境界だけ**（Drizzle / Stripe SDK / LLM 呼び出し箇所で `ResultAsync.fromPromise` 等）。
+- ドメイン・ユースケース・リポジトリ・外部ゲートウェイ（Stripe / LLM）はすべて `Result` / `Promise<Result>` を返す。
+  `Result<T, E>` は `{ ok: true; value } | { ok: false; error }` の判別可能なユニオンで、`domain/result.ts` に置く（ライブラリは使わない）。
+  呼び出し側は `if (!result.ok) ...` の早期 return で分岐する。
+- **例外 → Result の変換はインフラ層の境界だけ**（Drizzle / Stripe SDK / LLM 呼び出し箇所で `try` / `catch`。DB は `infrastructure/db/try-query.ts` の `tryQuery`）。
   ドメイン・ユースケースでは throw しない。
 - エラー型は判別可能なユニオン（`type` フィールド）で定義する:
   - ドメインエラー: 残高不足 / 超過上限到達 / 重複送信 / 冪等キーの内容不一致 など
@@ -122,9 +124,9 @@ Stripe と連携した「トークン消費型 AI チャット」を題材に網
 - **TransactionManager の規約（重要）**: Drizzle は「コールバックが throw したときだけ」ロールバックする。
   `err` を返すと途中までの書き込みがコミットされてしまうため、`TransactionManager.run` が
   **`Err` を受けたら内部の番兵例外でロールバックし、外側で `Err` に戻す**。`retryable` なインフラエラーは回数上限付きでリトライする。
-- ハンドラー層（oRPC）で `match` し、ドメインエラーを oRPC の型付きエラーに、インフラエラーを 500 系に変換する。
+- ハンドラー層（oRPC）でエラーの `type` を `switch` で網羅的に分岐し（`default` の `satisfies never` で変換漏れを typecheck で止める）、ドメインエラーを oRPC の型付きエラーに、インフラエラーを 500 系に変換する。
   それでも漏れた例外（バグ）は最上位のエラーハンドラーで 500 にする。
-- Biome では「Result の戻り値の無視」を検出できない（`eslint-plugin-neverthrow` は ESLint 専用）。
+- Biome では「Result の戻り値の無視」を検出できない。
   エラー経路は必ずテストで検証する（特に「Err のときロールバックされる」ことを TransactionManager のテストで保証）。
 
 ## リント方針（Biome）
@@ -205,7 +207,7 @@ DB 関連のバグを機械的に止めることを主目的とする。
 | 調査ツール | PostgreSQL 本体 ＋ 公式拡張 | PgHero・pg_stat_statements 追加 / RDS | 環境非依存の知識。発見工程は対象外 |
 | Tx の責務 | ユースケースが境界、ロックはメソッド名で明示 | リポジトリ隠蔽 / 軽量レイヤード | ロックは業務ルール。層の上で可視化する |
 | Lint / Format | Biome 単体 | Oxlint（type-aware）＋ oxfmt / Oxlint ＋ Biome 整形 / ESLint ＋ Prettier | 1 ツール・1 設定のシンプルさを優先。floating promise の検出漏れはテストで補う |
-| エラーハンドリング | neverthrow（全層） | 想定内エラーのみ Result / 自前 Result 型 / 例外のみ | 全層で型による一貫性を優先。Tx ロールバックは TransactionManager で吸収 |
+| エラーハンドリング | 自前 Result 型（全層） | neverthrow / 想定内エラーのみ Result / 例外のみ | 全層で型による一貫性を優先。当初は neverthrow を採用したが、チェーン（`andThen` 等）を使わず `isErr` の早期 return だけだったため、学習コストに見合わないとして自前の型に置き換えた（ts-pattern も同様に `switch` へ）。Tx ロールバックは TransactionManager で吸収 |
 | Fake LLM | 自作 `FakeLlmClient`（実 LLM なし） | LangChain の Fake / Vercel AI SDK のテスト用モデル / Claude API アダプター併設 | usage・切断・max_tokens を完全制御でき依存も増えない。費用ゼロで DB 学習に集中 |
 | 用語 | クレジット付与（`credit_grants`） | ロット / バケット | Stripe Billing の Credit Grants と語彙を揃える。無償付与・購入を `source` で区別 |
 | 残高の正本 | 自前 DB（お金は Stripe、クレジットは自前 DB） | Stripe Billing Credit Grants + Meters（後払い） | 送信ごとのリアルタイム判定が必要。Stripe 側は非同期集計・請求時相殺で、プリペイドの即時停止と噛み合わない |

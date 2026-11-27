@@ -46,7 +46,7 @@ export async function* sendMessage(
   input: NewUserMessage & { userId: string },
 ): AsyncGenerator<SendMessageEvent> {
   const owned = await deps.conversations.isOwnedBy(input)
-  if (owned.isErr()) {
+  if (!owned.ok) {
     yield { type: 'error', error: owned.error }
     return
   }
@@ -56,7 +56,7 @@ export async function* sendMessage(
   }
 
   const accepted = await deps.messages.createUserMessage(input)
-  if (accepted.isOk()) {
+  if (accepted.ok) {
     yield* runDetached(generateReply(deps, accepted.value.id, input.content))
     return
   }
@@ -73,7 +73,7 @@ async function* handleDuplicate(
   input: NewUserMessage,
 ): AsyncGenerator<SendMessageEvent> {
   const found = await deps.messages.findByClientMessageId(input)
-  if (found.isErr()) {
+  if (!found.ok) {
     yield { type: 'error', error: found.error }
     return
   }
@@ -91,7 +91,7 @@ async function* handleDuplicate(
   }
   if (existing.status === 'failed') {
     const claimed = await deps.messages.claimFailedForRetry(existing.id)
-    if (claimed.isErr()) {
+    if (!claimed.ok) {
       yield { type: 'error', error: claimed.error }
       return
     }
@@ -124,7 +124,7 @@ async function* generateReply(
   try {
     // 生成を始める時点の単価を、完了時の利用記録に固定する
     const price = await deps.modelPrices.findEffective({ model: MODEL, at: new Date() })
-    if (price.isErr()) {
+    if (!price.ok) {
       yield await fail(price.error)
       return
     }
@@ -161,7 +161,7 @@ async function* generateReply(
         credits: calculateCredits(usage, price.value),
       },
     })
-    if (saved.isErr()) {
+    if (!saved.ok) {
       yield await fail(saved.error)
       return
     }

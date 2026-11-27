@@ -1,5 +1,6 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest'
 import { requireEnv } from '@/config'
+import { ok } from '@/domain/result'
 import { createDb } from '@/infrastructure/db/client'
 import { createModelPriceRepository } from '@/infrastructure/db/model-price-repository'
 import { modelPrices, models } from '@/infrastructure/db/schema'
@@ -43,11 +44,13 @@ describe('ModelPriceRepository: 有効な単価の取得', () => {
       at: new Date('2026-06-01T00:00:00Z'),
     })
 
-    expect(result._unsafeUnwrap()).toEqual({
-      id: revised.id,
-      inputPerMillionTokens: 2_000,
-      outputPerMillionTokens: 10_000,
-    })
+    expect(result).toEqual(
+      ok({
+        id: revised.id,
+        inputPerMillionTokens: 2_000,
+        outputPerMillionTokens: 10_000,
+      }),
+    )
   })
 
   it('未来の日時から適用される改定があるとき それを使わず 指定時刻に有効な単価を取得する', async () => {
@@ -77,11 +80,13 @@ describe('ModelPriceRepository: 有効な単価の取得', () => {
       at: new Date('2026-06-01T00:00:00Z'),
     })
 
-    expect(result._unsafeUnwrap()).toEqual({
-      id: current.id,
-      inputPerMillionTokens: 3_000,
-      outputPerMillionTokens: 15_000,
-    })
+    expect(result).toEqual(
+      ok({
+        id: current.id,
+        inputPerMillionTokens: 3_000,
+        outputPerMillionTokens: 15_000,
+      }),
+    )
   })
 
   it('指定時刻が適用開始日時ちょうどのとき 新しい単価を取得する', async () => {
@@ -111,10 +116,12 @@ describe('ModelPriceRepository: 有効な単価の取得', () => {
       at: new Date('2026-07-01T00:00:00Z'),
     })
 
-    expect(result._unsafeUnwrap()).toEqual({
-      id: revised.id,
-      inputPerMillionTokens: 2_000,
-      outputPerMillionTokens: 10_000,
-    })
+    expect(result).toEqual(
+      ok({
+        id: revised.id,
+        inputPerMillionTokens: 2_000,
+        outputPerMillionTokens: 10_000,
+      }),
+    )
   })
 })

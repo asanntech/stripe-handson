@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm'
 import { afterAll, beforeEach, describe, expect, it } from 'vitest'
 import { requireEnv } from '@/config'
+import { err } from '@/domain/result'
 import { createDb } from '@/infrastructure/db/client'
 import { createMessageRepository } from '@/infrastructure/db/message-repository'
 import {
@@ -15,6 +16,7 @@ import {
 import { createBarrier } from '../../helpers/barrier'
 import { truncateAllTables } from '../../helpers/database'
 import { waitUntilWaitingForLock } from '../../helpers/lock'
+import { unwrap } from '../../helpers/result'
 
 describe('MessageRepository: 受付 INSERT の競合', () => {
   // Tx A・Tx B・ロック待ちの観測用で 3 接続使う
@@ -44,7 +46,7 @@ describe('MessageRepository: 受付 INSERT の競合', () => {
 
     const txA = db.transaction(async (tx) => {
       const result = await createMessageRepository(tx).createUserMessage(message)
-      if (result.isErr()) throw new Error('準備: A の受付が失敗しました')
+      if (!result.ok) throw new Error('準備: A の受付が失敗しました')
       aInserted.open()
       // B が A の INSERT の結末待ちに入ったのを確認してからコミットする（コールバックを抜けると COMMIT）
       await waitUntilWaitingForLock(db, await bPid.promise)
@@ -69,7 +71,7 @@ describe('MessageRepository: 受付 INSERT の競合', () => {
     const [, resultB] = await Promise.all([txA, txB])
 
     expect(events).toEqual(['A: commit', 'B: inserted'])
-    expect(resultB._unsafeUnwrapErr()).toEqual({ type: 'duplicate_client_message' })
+    expect(resultB).toEqual(err({ type: 'duplicate_client_message' }))
     expect(await db.select().from(userMessages)).toHaveLength(1)
   })
 
@@ -90,7 +92,7 @@ describe('MessageRepository: 受付 INSERT の競合', () => {
     const txA = db
       .transaction(async (tx) => {
         const result = await createMessageRepository(tx).createUserMessage(message)
-        if (result.isErr()) throw new Error('準備: A の受付が失敗しました')
+        if (!result.ok) throw new Error('準備: A の受付が失敗しました')
         aInserted.open()
         await waitUntilWaitingForLock(db, await bPid.promise)
         // コールバックが throw すると ROLLBACK になる
@@ -116,7 +118,7 @@ describe('MessageRepository: 受付 INSERT の競合', () => {
     const [, resultB] = await Promise.all([txA, txB])
 
     const saved = await db.select().from(userMessages)
-    expect(saved).toEqual([expect.objectContaining({ id: resultB._unsafeUnwrap().id })])
+    expect(saved).toEqual([expect.objectContaining({ id: unwrap(resultB).id })])
   })
 })
 
@@ -142,7 +144,7 @@ describe('MessageRepository: 応答の保存', () => {
       clientMessageId: crypto.randomUUID(),
       content: 'こんにちは',
     })
-    const userMessageId = accepted._unsafeUnwrap().id
+    const userMessageId = unwrap(accepted).id
     const [model] = await db.insert(models).values({ name: 'fake-model' }).returning()
     if (!model) throw new Error('準備: models の INSERT が行を返しませんでした')
     const [price] = await db
@@ -160,9 +162,9 @@ describe('MessageRepository: 応答の保存', () => {
 
     const second = await repository.complete({ userMessageId, content: '2 回目の応答', usage })
 
-    expect(second._unsafeUnwrapErr()).toEqual({ type: 'duplicate_reply' })
+    expect(second).toEqual(err({ type: 'duplicate_reply' }))
     expect(await db.select().from(assistantMessages)).toEqual([
-      expect.objectContaining({ id: first._unsafeUnwrap().id, content: '1 回目の応答' }),
+      expect.objectContaining({ id: unwrap(first).id, content: '1 回目の応答' }),
     ])
   })
 
@@ -189,7 +191,7 @@ describe('MessageRepository: 応答の保存', () => {
       clientMessageId: crypto.randomUUID(),
       content: 'こんにちは',
     })
-    const userMessageId = accepted._unsafeUnwrap().id
+    const userMessageId = unwrap(accepted).id
 
     const result = await repository.complete({
       userMessageId,
@@ -197,7 +199,7 @@ describe('MessageRepository: 応答の保存', () => {
       usage: { modelPriceId: price.id, inputTokens: 10, outputTokens: 30, credits: 1 },
     })
 
-    expect(result.isOk()).toBe(true)
+    expect(result.ok).toBe(true)
     expect(await db.select().from(usageRecords)).toEqual([
       expect.objectContaining({
         userMessageId,
@@ -220,7 +222,7 @@ describe('MessageRepository: 応答の保存', () => {
       clientMessageId: crypto.randomUUID(),
       content: 'こんにちは',
     })
-    const userMessageId = accepted._unsafeUnwrap().id
+    const userMessageId = unwrap(accepted).id
 
     // 存在しない単価行を参照させ、利用記録の INSERT を FK 違反で失敗させる
     const result = await repository.complete({
@@ -229,7 +231,7 @@ describe('MessageRepository: 応答の保存', () => {
       usage: { modelPriceId: crypto.randomUUID(), inputTokens: 10, outputTokens: 30, credits: 1 },
     })
 
-    expect(result._unsafeUnwrapErr()).toMatchObject({ type: 'database_error' })
+    expect(result).toMatchObject(err({ type: 'database_error' }))
     expect(await db.select().from(assistantMessages)).toEqual([])
     expect(await db.select().from(usageRecords)).toEqual([])
     expect(await db.select().from(userMessages)).toEqual([

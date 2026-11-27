@@ -1,26 +1,29 @@
 import { and, eq } from 'drizzle-orm'
-import { ResultAsync } from 'neverthrow'
+import { ok } from '@/domain/result'
 import type { ConversationRepository } from '@/usecases/ports/conversation-repository'
-import type { RepositoryError } from '@/usecases/ports/repository-error'
 import type { DbExecutor } from './client'
 import { conversations } from './schema'
+import { tryQuery } from './try-query'
 
 export const createConversationRepository = (db: DbExecutor): ConversationRepository => ({
-  create: (userId) =>
-    ResultAsync.fromPromise(
+  create: async (userId) => {
+    const rows = await tryQuery(
       db.insert(conversations).values({ userId }).returning({ id: conversations.id }),
-      (cause): RepositoryError => ({ type: 'database_error', cause }),
-    ).map(([row]) => {
-      if (!row) throw new Error('conversations の INSERT が行を返しませんでした')
-      return row
-    }),
+    )
+    if (!rows.ok) return rows
+    const [row] = rows.value
+    if (!row) throw new Error('conversations の INSERT が行を返しませんでした')
+    return ok(row)
+  },
 
-  isOwnedBy: ({ conversationId, userId }) =>
-    ResultAsync.fromPromise(
+  isOwnedBy: async ({ conversationId, userId }) => {
+    const rows = await tryQuery(
       db
         .select({ id: conversations.id })
         .from(conversations)
         .where(and(eq(conversations.id, conversationId), eq(conversations.userId, userId))),
-      (cause): RepositoryError => ({ type: 'database_error', cause }),
-    ).map((rows) => rows.length > 0),
+    )
+    if (!rows.ok) return rows
+    return ok(rows.value.length > 0)
+  },
 })

@@ -1,13 +1,13 @@
 import { and, desc, eq, lte } from 'drizzle-orm'
-import { ResultAsync } from 'neverthrow'
+import { ok } from '@/domain/result'
 import type { ModelPriceRepository } from '@/usecases/ports/model-price-repository'
-import type { RepositoryError } from '@/usecases/ports/repository-error'
 import type { DbExecutor } from './client'
 import { modelPrices, models } from './schema'
+import { tryQuery } from './try-query'
 
 export const createModelPriceRepository = (db: DbExecutor): ModelPriceRepository => ({
-  findEffective: ({ model, at }) =>
-    ResultAsync.fromPromise(
+  findEffective: async ({ model, at }) => {
+    const rows = await tryQuery(
       db
         .select({
           id: modelPrices.id,
@@ -20,6 +20,8 @@ export const createModelPriceRepository = (db: DbExecutor): ModelPriceRepository
         .where(and(eq(models.name, model), lte(modelPrices.effectiveFrom, at)))
         .orderBy(desc(modelPrices.effectiveFrom))
         .limit(1),
-      (cause): RepositoryError => ({ type: 'database_error', cause }),
-    ).map(([row]) => row ?? null),
+    )
+    if (!rows.ok) return rows
+    return ok(rows.value[0] ?? null)
+  },
 })

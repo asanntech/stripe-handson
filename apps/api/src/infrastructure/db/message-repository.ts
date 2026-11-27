@@ -1,15 +1,13 @@
 import { and, eq } from 'drizzle-orm'
-import { errAsync, okAsync, ResultAsync } from 'neverthrow'
+import { err, ok } from '@/domain/result'
 import type { MessageRepository } from '@/usecases/ports/message-repository'
-import type { RepositoryError } from '@/usecases/ports/repository-error'
 import type { DbExecutor } from './client'
 import { assistantMessages, usageRecords, userMessages } from './schema'
-
-const toRepositoryError = (cause: unknown): RepositoryError => ({ type: 'database_error', cause })
+import { tryQuery } from './try-query'
 
 export const createMessageRepository = (db: DbExecutor): MessageRepository => ({
-  createUserMessage: (message) =>
-    ResultAsync.fromPromise(
+  createUserMessage: async (message) => {
+    const rows = await tryQuery(
       db
         .insert(userMessages)
         .values({ ...message, status: 'generating' })
@@ -18,13 +16,14 @@ export const createMessageRepository = (db: DbExecutor): MessageRepository => ({
           target: [userMessages.conversationId, userMessages.clientMessageId],
         })
         .returning({ id: userMessages.id }),
-      toRepositoryError,
-    ).andThen(([row]) =>
-      row ? okAsync(row) : errAsync({ type: 'duplicate_client_message' as const }),
-    ),
+    )
+    if (!rows.ok) return rows
+    const [row] = rows.value
+    return row ? ok(row) : err({ type: 'duplicate_client_message' })
+  },
 
-  findByClientMessageId: ({ conversationId, clientMessageId }) =>
-    ResultAsync.fromPromise(
+  findByClientMessageId: async ({ conversationId, clientMessageId }) => {
+    const rows = await tryQuery(
       db
         .select({
           id: userMessages.id,
@@ -41,39 +40,44 @@ export const createMessageRepository = (db: DbExecutor): MessageRepository => ({
             eq(userMessages.clientMessageId, clientMessageId),
           ),
         ),
-      toRepositoryError,
-    ).map(([row]) => {
-      if (!row) return null
-      const { id, status, content, replyId, replyContent } = row
-      const reply =
-        replyId !== null && replyContent !== null ? { id: replyId, content: replyContent } : null
-      return { id, status, content, reply }
-    }),
+    )
+    if (!rows.ok) return rows
+    const [row] = rows.value
+    if (!row) return ok(null)
+    const { id, status, content, replyId, replyContent } = row
+    const reply =
+      replyId !== null && replyContent !== null ? { id: replyId, content: replyContent } : null
+    return ok({ id, status, content, reply })
+  },
 
   // WHERE に status = 'failed' を含めるので、同時に実行されても先に行ロックを取った 1 つだけが更新できる
   // （後続は先行のコミットを待ってから条件を再評価し、0 行になる）
-  claimFailedForRetry: (userMessageId) =>
-    ResultAsync.fromPromise(
+  claimFailedForRetry: async (userMessageId) => {
+    const rows = await tryQuery(
       db
         .update(userMessages)
         .set({ status: 'generating' })
         .where(and(eq(userMessages.id, userMessageId), eq(userMessages.status, 'failed')))
         .returning({ id: userMessages.id }),
-      toRepositoryError,
-    ).map((rows) => rows.length === 1),
+    )
+    if (!rows.ok) return rows
+    return ok(rows.value.length === 1)
+  },
 
-  markFailed: (userMessageId) =>
-    ResultAsync.fromPromise(
+  markFailed: async (userMessageId) => {
+    const updated = await tryQuery(
       db
         .update(userMessages)
         .set({ status: 'failed' })
         .where(and(eq(userMessages.id, userMessageId), eq(userMessages.status, 'generating'))),
-      toRepositoryError,
-    ).map(() => undefined),
+    )
+    if (!updated.ok) return updated
+    return ok(undefined)
+  },
 
   // 応答・利用記録の INSERT と送信の状態更新は同じ Tx で行う（一部だけ反映されないように）
-  complete: ({ userMessageId, content, usage }) =>
-    ResultAsync.fromPromise(
+  complete: async ({ userMessageId, content, usage }) => {
+    const saved = await tryQuery(
       db.transaction(async (tx) => {
         const [row] = await tx
           .insert(assistantMessages)
@@ -89,6 +93,8 @@ export const createMessageRepository = (db: DbExecutor): MessageRepository => ({
           .where(eq(userMessages.id, userMessageId))
         return row
       }),
-      toRepositoryError,
-    ).andThen((row) => (row ? okAsync(row) : errAsync({ type: 'duplicate_reply' as const }))),
+    )
+    if (!saved.ok) return saved
+    return saved.value ? ok(saved.value) : err({ type: 'duplicate_reply' })
+  },
 })

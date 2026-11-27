@@ -1,6 +1,6 @@
-import type { ResultAsync } from 'neverthrow'
+import type { Result } from '@/domain/result'
 import type { RepositoryError } from './repository-error'
 
 export interface UserRepository {
-  exists(userId: string): ResultAsync<boolean, RepositoryError>
+  exists(userId: string): Promise<Result<boolean, RepositoryError>>
 }
