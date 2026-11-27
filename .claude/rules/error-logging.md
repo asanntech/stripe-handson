@@ -14,7 +14,7 @@ logger を導入するまでは `console.error` を使う。ログを出す場�
 - **ハンドラーは原因を `cause` に持たせて投げるだけにし、`console.error` を直接呼ばない。**
 
   ```ts
-  if (result.isErr()) throw errors.SERVICE_UNAVAILABLE({ cause: result.error })
+  if (!result.ok) throw errors.SERVICE_UNAVAILABLE({ cause: result.error })
   ```
 
 - **ログは `apps/api/src/interfaces/orpc/log-server-error.ts` の `logServerError` 1 か所で出す。** 形式は `console.error('[procedure 名]', error)`（例: `[messages.send]`）
@@ -26,7 +26,10 @@ logger を導入するまでは `console.error` を使う。ログを出す場�
 ## 未対応
 
 - **クライアントが切断したあとのバックグラウンド生成で起きた例外はログに出ない。** 送信は切断後も生成を続ける（`usecases/run-detached.ts`）が、購読者がいないので例外の届け先がなく、インターセプターまで届かない（送信は `finally` で「失敗」になる）。ログのポート（logger）を導入するときに、ユースケースから出せるようにする
-- **送信を「失敗」にする更新（`markFailed`）自体が失敗したときもログに出ない。** 理由と対応時期は上と同じ
+- **送信を「失敗」にする更新（`markFailed`）自体が失敗したとき、次の場合はログに出ない。** 対応時期は上と同じ
+  - 想定外の例外のあと `finally` で失敗した場合: 元の例外（原因）を優先するため、`markFailed` の例外は捨てている
+  - クライアントが切断したあとに失敗した場合: 上と同じく届け先がない
+  - （クライアントが接続中に、応答を保存できずに `fail()` で失敗した場合は、その例外がインターセプターまで届いてログに出る）
 
 ## テスト
 
