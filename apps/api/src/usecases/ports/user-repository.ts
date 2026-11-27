@@ -1,6 +1,4 @@
-import type { Result } from '@/domain/result'
-import type { RepositoryError } from './repository-error'
-
+// 想定外の DB エラー（接続断など）は例外のまま投げる（plan.md「エラーハンドリング方針」）
 export interface UserRepository {
-  exists(userId: string): Promise<Result<boolean, RepositoryError>>
+  exists(userId: string): Promise<boolean>
 }

@@ -14,9 +14,8 @@ export const router = orpc.router({
   },
   conversations: {
     create: authedOrpc.conversations.create.handler(async ({ context }) => {
-      const result = await context.conversations.create(context.userId)
-      if (!result.ok) throw new ORPCError('INTERNAL_SERVER_ERROR', { cause: result.error })
-      return { conversationId: result.value.id }
+      const conversation = await context.conversations.create(context.userId)
+      return { conversationId: conversation.id }
     }),
   },
   messages: {
@@ -45,7 +44,6 @@ export const router = orpc.router({
             throw errors.MESSAGE_IN_PROGRESS()
           case 'llm_unavailable':
             throw errors.LLM_UNAVAILABLE({ cause: error })
-          case 'database_error':
           case 'duplicate_reply':
           case 'model_price_not_found':
             throw new ORPCError('INTERNAL_SERVER_ERROR', { cause: error })

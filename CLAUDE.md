@@ -31,7 +31,7 @@ pnpm typecheck    # tsc --noEmit
 
 - 依存は外側 → 内側のみ（interfaces / infrastructure → usecases → domain）
 - domain 層は外部ライブラリに依存しない（許可リストは空）。足したくなったらユーザーに相談する（Drizzle・pg・Stripe・Hono・oRPC などは不可）
-- 想定内のエラーは throw せず `Result`（`@/domain/result`）で返す。neverthrow / ts-pattern は使わない（`docs/plan.md`「エラーハンドリング方針」）
+- 想定内のエラー（業務上の意味があるもの）だけ throw せず `Result`（`@/domain/result`）で返す。想定外のエラー（DB の接続断など）は例外のまま投げる。neverthrow / ts-pattern は使わない（`docs/plan.md`「エラーハンドリング方針」）
 - ライブラリのセットアップは、それを使う層の中の `setup.ts` に置く（トップレベルの `libs/` は作らない）
 - API の仕様（input / output）は `packages/contract` に定義し、サーバーは `implement(contract)` で実装する
 - DB アクセスはアプリもテストも `createDb()`（Drizzle）に統一する。プールが必要なときは `db.$client`
