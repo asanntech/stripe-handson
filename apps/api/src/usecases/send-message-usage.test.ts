@@ -60,17 +60,26 @@ describe('メッセージ送信の利用履歴（sendMessage）', () => {
     await db.$client.end()
   })
 
-  it('応答が完了したとき 利用履歴に入出力トークン数・適用した単価・消費クレジットが記録される', async () => {
+  it('応答が完了したとき 生成を始めた時刻で有効な単価で 利用履歴に入出力トークン数・適用した単価・消費クレジットが記録される', async () => {
     const alice = await createUserWithConversation()
     const model = await createModel()
     const [price] = await db
       .insert(modelPrices)
-      .values({
-        modelId: model.id,
-        inputPerMillionTokens: 3_000,
-        outputPerMillionTokens: 15_000,
-        effectiveFrom: new Date('2026-01-01T00:00:00Z'),
-      })
+      .values([
+        {
+          modelId: model.id,
+          inputPerMillionTokens: 3_000,
+          outputPerMillionTokens: 15_000,
+          effectiveFrom: new Date('2026-01-01T00:00:00Z'),
+        },
+        // まだ適用前の改定（ユースケースが今の時刻を渡していれば使われない）
+        {
+          modelId: model.id,
+          inputPerMillionTokens: 6_000,
+          outputPerMillionTokens: 30_000,
+          effectiveFrom: new Date(Date.now() + 60 * 60 * 1000),
+        },
+      ])
       .returning()
     if (!price) throw new Error('準備: model_prices の INSERT が行を返しませんでした')
     const llm = new FakeLlmClient(() => ({ inputTokens: 1_000, outputTokens: 200 }))
@@ -80,7 +89,7 @@ describe('メッセージ送信の利用履歴（sendMessage）', () => {
     )
 
     const [sent] = await db.select().from(userMessages)
-    // 1,000 × 3,000 / 1,000,000 + 200 × 15,000 / 1,000,000 = 3 + 3 = 6
+    // 1,000 × 3,000 / 1,000,000 + 200 × 15,000 / 1,000,000 = 3 + 3 = 6（改定後の単価なら 6 + 6 = 12）
     expect(await db.select().from(usageRecords)).toEqual([
       expect.objectContaining({
         userMessageId: sent?.id,
