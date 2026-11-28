@@ -1,5 +1,4 @@
 import { ORPCError } from '@orpc/server'
-import { sendMessage } from '@/usecases/send-message'
 import { authedOrpc, orpc } from './setup'
 
 export const router = orpc.router({
@@ -13,22 +12,13 @@ export const router = orpc.router({
     }),
   },
   conversations: {
-    create: authedOrpc.conversations.create.handler(async ({ context }) => {
-      const conversation = await context.conversations.create(context.userId)
-      return { conversationId: conversation.id }
-    }),
+    create: authedOrpc.conversations.create.handler(({ context }) =>
+      context.createConversation({ userId: context.userId }),
+    ),
   },
   messages: {
     send: authedOrpc.messages.send.handler(async function* ({ input, context, errors }) {
-      const events = sendMessage(
-        {
-          conversations: context.conversations,
-          messages: context.messages,
-          modelPrices: context.modelPrices,
-          llm: context.llm,
-        },
-        { ...input, userId: context.userId },
-      )
+      const events = context.sendMessage({ ...input, userId: context.userId })
       for await (const event of events) {
         if (event.type !== 'error') {
           yield event

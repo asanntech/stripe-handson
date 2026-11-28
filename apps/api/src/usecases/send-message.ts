@@ -32,6 +32,8 @@ export type SendMessageEvent =
   | { type: 'done'; messageId: string }
   | { type: 'error'; error: SendMessageError }
 
+export type SendMessageInput = NewUserMessage & { userId: string }
+
 type Deps = {
   conversations: ConversationRepository
   messages: MessageRepository
@@ -42,7 +44,7 @@ type Deps = {
 // 会話の持ち主の確認 → 受付（送信を「生成中」で INSERT）→ LLM のストリーミング（DB Tx の外）→ 完了の保存
 export async function* sendMessage(
   deps: Deps,
-  input: NewUserMessage & { userId: string },
+  input: SendMessageInput,
 ): AsyncGenerator<SendMessageEvent> {
   if (!(await deps.conversations.isOwnedBy(input))) {
     yield { type: 'error', error: { type: 'conversation_not_found' } }
