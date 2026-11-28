@@ -11,9 +11,11 @@ paths:
 
 ## 規則
 
-- **組み立ては実行エントリーポイント（`apps/api/src/main.ts`）にインラインで書く。** `composition.ts` / `container.ts` / `deps.ts` のような組み立て専用モジュールを `src/` に作らない
+- **組み立ては実行エントリーポイント（`apps/api/src/server.ts`）にインラインで書く。** `composition.ts` / `container.ts` / `deps.ts` のような組み立て専用モジュールを `src/` に作らない
   - テストで同じ組み立てを使いたい、という理由では作らない。テストの組み立ては `apps/api/test/helpers/` に置く（例: `createTestRpcContext`）
   - 本番とテストで組み立てが重複してよい。`RpcContext` などの依存の型は全項目を必須にし、直し忘れを typecheck で検出する
+- **oRPC の Initial Context（`RpcContext`）には、依存を束ねたユースケースを入れる。リポジトリは入れない。** handler はユースケースを呼ぶだけにし、どのユースケースがどのリポジトリを使うかはコンポジションルートに一覧で並べる
+  - 例: `sendMessage: (input) => sendMessage({ conversations, messages, modelPrices, llm }, input)`
 - **エントリーポイントが増えたら、それぞれを独立したコンポジションルートにする。** 例: 第 6 章以降の Webhook ワーカー・Outbox ワーカー・失効バッチ。エントリーポイント間で組み立てを共有するモジュールが必要に見えたら、作る前にユーザーに相談する
 - **依存の入れ物（コンテナ・サービスロケーター）を内側の層に渡さない。** ユースケースは自分が使うポートだけを引数で受け取る。`context` やコンテナ全体を渡して中から取り出させない
 - **`interfaces/` と `usecases/` から `infrastructure/` を import しない。** 実装の生成が必要になったら、それは組み立てなのでコンポジションルートに移す

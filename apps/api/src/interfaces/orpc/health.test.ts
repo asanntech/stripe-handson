@@ -1,11 +1,11 @@
 import { createORPCClient } from '@orpc/client'
 import { RPCLink } from '@orpc/client/fetch'
 import type { AppClient } from '@stripe-handson/contract'
+import { createTestRpcContext } from '@test/helpers/rpc-context'
 import { afterAll, afterEach, describe, expect, it, vi } from 'vitest'
 import { requireEnv } from '@/config'
 import { createDb } from '@/infrastructure/db/client'
 import { createHonoApp } from '@/interfaces/hono/app'
-import { createTestRpcContext } from '../helpers/rpc-context'
 
 describe('ヘルスチェック API', () => {
   const db = createDb({ connectionString: requireEnv('TEST_DATABASE_URL') })

@@ -31,8 +31,8 @@
                 "message": "相対 import に拡張子を付けない（moduleResolution: bundler）。例: './llm-client'"
               },
               {
-                "group": ["../**", "!**/helpers/**"],
-                "message": "親ディレクトリへの相対 import は使わず、エイリアス '@/' を使う（例: '@/usecases/ports/llm-client'）。同じディレクトリ内は './' でよい"
+                "group": ["../**"],
+                "message": "親ディレクトリへの相対 import は使わず、エイリアスを使う（実装は '@/'、テストのヘルパーは '@test/'。例: '@/usecases/ports/llm-client'）。同じディレクトリ内は './' でよい"
               }
             ]
           }

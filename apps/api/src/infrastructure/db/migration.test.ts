@@ -1,8 +1,8 @@
+import { truncateAllTables } from '@test/helpers/database'
 import { afterAll, beforeEach, describe, expect, it } from 'vitest'
 import { requireEnv } from '@/config'
 import { createDb } from '@/infrastructure/db/client'
 import { users } from '@/infrastructure/db/schema'
-import { truncateAllTables } from '../helpers/database'
 
 describe('マイグレーション', () => {
   const db = createDb({ connectionString: requireEnv('TEST_DATABASE_URL') })

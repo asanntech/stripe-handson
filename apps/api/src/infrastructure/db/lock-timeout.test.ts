@@ -1,11 +1,11 @@
+import { createBarrier } from '@test/helpers/barrier'
+import { truncateAllTables } from '@test/helpers/database'
 import { eq, sql } from 'drizzle-orm'
 import { afterAll, beforeEach, describe, expect, it } from 'vitest'
 import { requireEnv } from '@/config'
 import { createDb } from '@/infrastructure/db/client'
 import { getPgErrorCode, PG_ERROR_CODE } from '@/infrastructure/db/pg-error'
 import { users } from '@/infrastructure/db/schema'
-import { createBarrier } from '../helpers/barrier'
-import { truncateAllTables } from '../helpers/database'
 
 describe('ロックタイムアウト', () => {
   // Tx A・Tx B で 2 接続使う

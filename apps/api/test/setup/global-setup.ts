@@ -1,8 +1,8 @@
 import { fileURLToPath } from 'node:url'
+import { truncateAllTables } from '@test/helpers/database'
 import { migrate } from 'drizzle-orm/node-postgres/migrator'
 import { requireEnv } from '@/config'
 import { createDb } from '@/infrastructure/db/client'
-import { truncateAllTables } from '../helpers/database'
 
 // テスト実行前に 1 回だけ、テスト用 DB を最新スキーマへマイグレーションする
 export default async function setup(): Promise<void> {
