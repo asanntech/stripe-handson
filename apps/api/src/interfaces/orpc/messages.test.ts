@@ -1,6 +1,7 @@
 import { createORPCClient } from '@orpc/client'
 import { RPCLink } from '@orpc/client/fetch'
 import type { AppClient } from '@stripe-handson/contract'
+import { createBarrier } from '@test/helpers/barrier'
 import { truncateAllTables } from '@test/helpers/database'
 import { createTestRpcContext } from '@test/helpers/rpc-context'
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -12,8 +13,8 @@ import { createHonoApp } from '@/interfaces/hono/app'
 import type { LlmClient } from '@/usecases/ports/llm-client'
 import { MODEL } from '@/usecases/send-message'
 
-// API 経由で確かめるのは、ストリームの形・入力の検証・ユースケースのエラー → contract のエラーの変換・5xx のログだけ。
-// 業務の流れ（再送・競合・切断・保存される状態など）は usecases/send-message.test.ts で検証する（.claude/rules/testing.md）
+// API 経由で確かめるのは、ストリームの形（切断の伝わり方を含む）・入力の検証・ユースケースのエラー → contract のエラーの変換・5xx のログだけ。
+// 業務の流れ（再送・競合・保存される状態など）は usecases/send-message.test.ts で検証する（.claude/rules/testing.md）
 describe('メッセージ API', () => {
   const db = createDb({ connectionString: requireEnv('TEST_DATABASE_URL') })
 
@@ -88,6 +89,43 @@ describe('メッセージ API', () => {
       { type: 'delta', text: 'token3 ' },
       { type: 'done', messageId: expect.any(String) },
     ])
+  })
+
+  it('クライアントがストリームの途中で切断したとき 生成は最後まで続き 送信は「完了」として保存される', async () => {
+    const alice = await createUserWithConversation()
+    const disconnected = createBarrier()
+    // 最初のチャンクを流したら、クライアントが切断するまで残りを流さない（切断した時点で必ず生成中にする）
+    const llm: LlmClient = {
+      async *stream() {
+        yield { type: 'delta', text: 'token1 ' }
+        await disconnected.wait()
+        yield { type: 'delta', text: 'token2 ' }
+        yield { type: 'done', stopReason: 'end_turn', usage: { inputTokens: 5, outputTokens: 2 } }
+      },
+    }
+    const client = createClient(alice.userId, llm)
+
+    const stream = await client.messages.send({
+      conversationId: alice.conversationId,
+      clientMessageId: crypto.randomUUID(),
+      content: 'こんにちは',
+    })
+    for await (const _ of stream) {
+      // 最初の delta を受け取ったところで切断する
+      break
+    }
+    // 切断が oRPC / Hono / handler を通ってユースケースまで伝わっても、生成は切り離されて続く
+    // （再送の扱いなど業務の分岐は usecases/send-message.test.ts で検証する）
+    disconnected.open()
+
+    await vi.waitFor(
+      async () => {
+        expect(await db.select().from(userMessages)).toEqual([
+          expect.objectContaining({ status: 'completed' }),
+        ])
+      },
+      { timeout: 5_000 },
+    )
   })
 
   it('存在しない会話に送信したとき 404 を返す', async () => {
