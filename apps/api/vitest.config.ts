@@ -12,8 +12,11 @@ process.env.TEST_DATABASE_URL ??= 'postgres://app:app@localhost:5436/app_test'
 
 export default defineConfig({
   resolve: {
-    // tsconfig の paths（@/* → src/*）と揃える。'@orpc/...' などのスコープ付きパッケージには当たらない
-    alias: [{ find: /^@\//, replacement: fileURLToPath(new URL('./src/', import.meta.url)) }],
+    // tsconfig の paths（@/* → src/*、@test/* → test/*）と揃える。'@orpc/...' などのスコープ付きパッケージには当たらない
+    alias: [
+      { find: /^@\//, replacement: fileURLToPath(new URL('./src/', import.meta.url)) },
+      { find: /^@test\//, replacement: fileURLToPath(new URL('./test/', import.meta.url)) },
+    ],
   },
   test: {
     // 実 PostgreSQL を共有するため、テストファイルは直列に実行する

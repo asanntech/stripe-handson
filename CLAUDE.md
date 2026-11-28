@@ -30,15 +30,19 @@ pnpm typecheck    # tsc --noEmit
 | `server.ts` | HTTP サーバーのエントリーポイント兼コンポジションルート（依存の組み立てと起動のみ） |
 
 - 依存は外側 → 内側のみ（interfaces / infrastructure → usecases → domain）
-- domain 層は外部ライブラリに依存しない（許可リストは空）。足したくなったらユーザーに相談する（Drizzle・pg・Stripe・Hono・oRPC などは不可）
+- domain 層は外部ライブラリに依存しない（許可リストは空。隣に置くテストファイルの vitest は対象外）。足したくなったらユーザーに相談する（Drizzle・pg・Stripe・Hono・oRPC などは不可）
 - 想定内のエラー（業務上の意味があるもの）だけ throw せず `Result`（`@/domain/result`）で返す。想定外のエラー（DB の接続断など）は例外のまま投げる。neverthrow / ts-pattern は使わない（`docs/plan.md`「エラーハンドリング方針」）
 - ライブラリのセットアップは、それを使う層の中の `setup.ts` に置く（トップレベルの `libs/` は作らない）
 - API の仕様（input / output）は `packages/contract` に定義し、サーバーは `implement(contract)` で実装する
 - DB アクセスはアプリもテストも `createDb()`（Drizzle）に統一する。プールが必要なときは `db.$client`
-- import は拡張子なしで書く（`moduleResolution: bundler`）。`apps/api/src` へはエイリアス `@/`（例: `@/usecases/ports/llm-client`）、同じディレクトリ内は `./`。親ディレクトリへの `../` はテストのヘルパー（`helpers/`）以外禁止（Biome の `noRestrictedImports` で強制）
+- import は拡張子なしで書く（`moduleResolution: bundler`）。`apps/api/src` へはエイリアス `@/`（例: `@/usecases/ports/llm-client`）、`apps/api/test`（テストのヘルパー）へは `@test/`（例: `@test/helpers/database`）、同じディレクトリ内は `./`。親ディレクトリへの `../` は禁止（Biome の `noRestrictedImports` で強制）
 - `packages/*` ではエイリアスを使わない（api がソースのまま読み込むため、api 側の設定で解決されて壊れる）
 
 ## テストの規約
 
+- テストは対象の実装ファイルと同じ階層に `xxx.test.ts` で置く（コロケーション。例: `src/domain/credit.ts` ↔ `src/domain/credit.test.ts`）
+  - API 経由の結合テストは `src/interfaces/orpc/` に機能名で置く（例: `messages.test.ts`）
+  - 対応する実装ファイルがないテスト（行ロック・テーブルの制約など DB の振る舞い）は、対象に最も近いディレクトリに置く（例: `src/infrastructure/db/row-lock.test.ts`）
+  - 対応する実装がない共通のヘルパー・グローバルセットアップだけ `apps/api/test/` に置き、`@test/` で import する（ヘルパー自身のテストはヘルパーの隣）
 - DB を使うテストは `beforeEach` で `truncateAllTables(db)` を明示的に呼ぶ
 - 競合テストは `createBarrier()` と `waitUntilWaitingForLock()` で実行順序を固定する（確率的に Green になるテストは書かない）

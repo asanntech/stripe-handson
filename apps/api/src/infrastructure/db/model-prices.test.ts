@@ -1,10 +1,10 @@
+import { truncateAllTables } from '@test/helpers/database'
 import { eq } from 'drizzle-orm'
 import { afterAll, beforeEach, describe, expect, it } from 'vitest'
 import { requireEnv } from '@/config'
 import { createDb } from '@/infrastructure/db/client'
 import { getPgErrorCode } from '@/infrastructure/db/pg-error'
 import { modelPrices, models } from '@/infrastructure/db/schema'
-import { truncateAllTables } from '../../helpers/database'
 
 describe('model_prices の制約', () => {
   const db = createDb({ connectionString: requireEnv('TEST_DATABASE_URL') })
