@@ -2,20 +2,23 @@ import { implement, ORPCError } from '@orpc/server'
 import { contract } from '@stripe-handson/contract'
 import { z } from 'zod'
 import type { Result } from '@/domain/result'
-import type { AuthenticateError } from '@/usecases/authenticate'
-import type { SendMessageEvent, SendMessageInput } from '@/usecases/send-message'
+import type { authenticate } from '@/usecases/authenticate'
+import type { createConversation } from '@/usecases/create-conversation'
+import type { sendMessage } from '@/usecases/send-message'
 
 // oRPC のセットアップ: contract を実装する procedure ビルダー（orpc / 認証済みの authedOrpc）と、
 // handler.handle() に渡す Initial Context（コンポジションルートで依存を束ねたユースケース）。
 // リポジトリは入れない。どのユースケースがどのリポジトリを使うかは server.ts に一覧で並ぶ
 export type RpcContext = {
   checkDatabase: () => Promise<Result<void, { type: 'database_unavailable'; cause: unknown }>>
-  authenticate: (input: {
-    userId: string
-  }) => Promise<Result<{ userId: string }, AuthenticateError>>
-  createConversation: (input: { userId: string }) => Promise<{ conversationId: string }>
-  sendMessage: (input: SendMessageInput) => AsyncGenerator<SendMessageEvent>
+  authenticate: Bound<typeof authenticate>
+  createConversation: Bound<typeof createConversation>
+  sendMessage: Bound<typeof sendMessage>
 }
+
+// ユースケースの関数の型から第 1 引数（deps）を除いた、依存を束ねたあとの型。
+// 入出力の型はユースケース側の定義を正とし、ここで書き直さない
+type Bound<F> = F extends (deps: never, ...args: infer A) => infer R ? (...args: A) => R : never
 
 // リクエストのヘッダーは Hono のアプリ（hono/app.ts）が Initial Context に足す
 export const orpc = implement(contract).$context<RpcContext & { headers: Headers }>()
