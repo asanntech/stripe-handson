@@ -18,8 +18,8 @@ import { MODEL } from '@/usecases/send-message'
 describe('メッセージ API', () => {
   const db = createDb({ connectionString: requireEnv('TEST_DATABASE_URL') })
 
-  const createUserWithConversation = async () => {
-    const [user] = await db.insert(users).values({ name: 'alice' }).returning()
+  const createUserWithConversation = async (name = 'alice') => {
+    const [user] = await db.insert(users).values({ name }).returning()
     if (!user) throw new Error('準備: users の INSERT が行を返しませんでした')
     const [conversation] = await db.insert(conversations).values({ userId: user.id }).returning()
     if (!conversation) throw new Error('準備: conversations の INSERT が行を返しませんでした')
@@ -128,19 +128,21 @@ describe('メッセージ API', () => {
     )
   })
 
-  it('存在しない会話に送信したとき 404 を返す', async () => {
-    const alice = await createUserWithConversation()
-    const client = createClient(alice.userId)
+  it('他人の会話に送信したとき 404 を返す', async () => {
+    const alice = await createUserWithConversation('alice')
+    const bob = await createUserWithConversation('bob')
+    const bobClient = createClient(bob.userId)
 
     const { error } = await readAll(
-      await client.messages.send({
-        conversationId: crypto.randomUUID(),
+      await bobClient.messages.send({
+        conversationId: alice.conversationId,
         clientMessageId: crypto.randomUUID(),
         content: 'こんにちは',
       }),
     )
 
-    // 他人の会話も同じ 404 になる（会話の存在を他人に知らせないため。区別しないことはユースケースのテストで検証する）
+    // handler が認証済みのユーザー（Bob）をユースケースに渡していることを、認可の境界で確かめる。
+    // 存在しない会話も同じ 404 になる（会話の存在を他人に知らせないため。区別しないことはユースケースのテストで検証する）
     expect(error).toMatchObject({ code: 'CONVERSATION_NOT_FOUND', status: 404 })
   })
 
