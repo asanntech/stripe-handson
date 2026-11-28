@@ -7,7 +7,7 @@ import type { SendMessageEvent, SendMessageInput } from '@/usecases/send-message
 
 // oRPC のセットアップ: contract を実装する procedure ビルダー（orpc / 認証済みの authedOrpc）と、
 // handler.handle() に渡す Initial Context（コンポジションルートで依存を束ねたユースケース）。
-// リポジトリは入れない。どのユースケースがどのリポジトリを使うかは main.ts に一覧で並ぶ
+// リポジトリは入れない。どのユースケースがどのリポジトリを使うかは server.ts に一覧で並ぶ
 export type RpcContext = {
   checkDatabase: () => Promise<Result<void, { type: 'database_unavailable'; cause: unknown }>>
   authenticate: (input: {

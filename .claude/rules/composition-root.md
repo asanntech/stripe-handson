@@ -11,7 +11,7 @@ paths:
 
 ## 規則
 
-- **組み立ては実行エントリーポイント（`apps/api/src/main.ts`）にインラインで書く。** `composition.ts` / `container.ts` / `deps.ts` のような組み立て専用モジュールを `src/` に作らない
+- **組み立ては実行エントリーポイント（`apps/api/src/server.ts`）にインラインで書く。** `composition.ts` / `container.ts` / `deps.ts` のような組み立て専用モジュールを `src/` に作らない
   - テストで同じ組み立てを使いたい、という理由では作らない。テストの組み立ては `apps/api/test/helpers/` に置く（例: `createTestRpcContext`）
   - 本番とテストで組み立てが重複してよい。`RpcContext` などの依存の型は全項目を必須にし、直し忘れを typecheck で検出する
 - **oRPC の Initial Context（`RpcContext`）には、依存を束ねたユースケースを入れる。リポジトリは入れない。** handler はユースケースを呼ぶだけにし、どのユースケースがどのリポジトリを使うかはコンポジションルートに一覧で並べる

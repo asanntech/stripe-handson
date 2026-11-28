@@ -11,7 +11,7 @@ import { createConversation } from '@/usecases/create-conversation'
 import type { LlmClient } from '@/usecases/ports/llm-client'
 import { sendMessage } from '@/usecases/send-message'
 
-// テスト用の oRPC Initial Context の組み立て（本番は main.ts）。RpcContext の項目は必須なので、依存を足すと両方が型エラーで知らせる
+// テスト用の oRPC Initial Context の組み立て（本番は server.ts）。RpcContext の項目は必須なので、依存を足すと両方が型エラーで知らせる
 // llm を省略したときは、1 トークンだけ返す Fake を使う（LLM を使わないテスト向け）
 export const createTestRpcContext = ({
   db,
