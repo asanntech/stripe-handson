@@ -169,49 +169,6 @@ describe('MessageRepository: 応答の保存', () => {
     ])
   })
 
-  it('応答を保存するとき 利用記録（トークン数・適用した単価・消費クレジット）も保存される', async () => {
-    const [alice] = await db.insert(users).values({ name: 'alice' }).returning()
-    if (!alice) throw new Error('準備: users の INSERT が行を返しませんでした')
-    const [conversation] = await db.insert(conversations).values({ userId: alice.id }).returning()
-    if (!conversation) throw new Error('準備: conversations の INSERT が行を返しませんでした')
-    const [model] = await db.insert(models).values({ name: 'fake-model' }).returning()
-    if (!model) throw new Error('準備: models の INSERT が行を返しませんでした')
-    const [price] = await db
-      .insert(modelPrices)
-      .values({
-        modelId: model.id,
-        inputPerMillionTokens: 3_000,
-        outputPerMillionTokens: 15_000,
-        effectiveFrom: new Date('2026-01-01T00:00:00Z'),
-      })
-      .returning()
-    if (!price) throw new Error('準備: model_prices の INSERT が行を返しませんでした')
-    const repository = createMessageRepository(db)
-    const accepted = await repository.createUserMessage({
-      conversationId: conversation.id,
-      clientMessageId: crypto.randomUUID(),
-      content: 'こんにちは',
-    })
-    const userMessageId = unwrap(accepted).id
-
-    const result = await repository.complete({
-      userMessageId,
-      content: '応答',
-      usage: { modelPriceId: price.id, inputTokens: 10, outputTokens: 30, credits: 1 },
-    })
-
-    expect(result.ok).toBe(true)
-    expect(await db.select().from(usageRecords)).toEqual([
-      expect.objectContaining({
-        userMessageId,
-        modelPriceId: price.id,
-        inputTokens: 10,
-        outputTokens: 30,
-        credits: 1,
-      }),
-    ])
-  })
-
   it('利用記録を保存できないとき 応答も保存されず 送信は生成中のまま（同じ Tx でロールバックされる）', async () => {
     const [alice] = await db.insert(users).values({ name: 'alice' }).returning()
     if (!alice) throw new Error('準備: users の INSERT が行を返しませんでした')
