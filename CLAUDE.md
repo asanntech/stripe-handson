@@ -40,9 +40,4 @@ pnpm typecheck    # tsc --noEmit
 
 ## テストの規約
 
-- テストは対象の実装ファイルと同じ階層に `xxx.test.ts` で置く（コロケーション。例: `src/domain/credit.ts` ↔ `src/domain/credit.test.ts`）
-  - API 経由の結合テストは `src/interfaces/orpc/` に機能名で置く（例: `messages.test.ts`）
-  - 対応する実装ファイルがないテスト（行ロック・テーブルの制約など DB の振る舞い）は、対象に最も近いディレクトリに置く（例: `src/infrastructure/db/row-lock.test.ts`）
-  - 対応する実装がない共通のヘルパー・グローバルセットアップだけ `apps/api/test/` に置き、`@test/` で import する（ヘルパー自身のテストはヘルパーの隣）
-- DB を使うテストは `beforeEach` で `truncateAllTables(db)` を明示的に呼ぶ
-- 競合テストは `createBarrier()` と `waitUntilWaitingForLock()` で実行順序を固定する（確率的に Green になるテストは書かない）
+- テストの書き方（層ごとの役割・置き場所・TRUNCATE・競合テスト）は `.claude/rules/testing.md` を参照
